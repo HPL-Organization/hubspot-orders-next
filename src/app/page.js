@@ -1,103 +1,161 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+import { useSearchParams } from "next/navigation";
+
+import React, { useEffect, useState } from "react";
+
+import { toast } from "react-toastify";
+
+import InfoTab from "../features/info/InfoTab";
+import OrderTab from "../features/order/OrderTab";
+import FulfillmentTab from "../features/fulfillment/FulfillmentTab";
+import MainTabs from "../layouts/MainTabs";
+import OrderHeader from "../layouts/OrderHeader";
+
+import { getSalesOrderNumberFromDeal } from "../../lib/HubSpot";
+
+function App() {
+  const [repOptions, setRepOptions] = useState([]);
+  const [selectedRepEmail, setSelectedRepEmail] = useState("");
+  const [netsuiteTranId, setNetsuiteTranId] = useState(null);
+  const [netsuiteInternalId, setNetsuiteInternalId] = useState(null);
+
+  const searchParams = useSearchParams();
+  const dealIdURL = searchParams.get("dealId");
+
+  const orderData = {
+    orderNumber: netsuiteTranId || "No associated sales order",
+    paymentStatus: "Pending",
+    fulfillmentStatus: "Not Started",
+    rep: selectedRepEmail, // use email for selection
+  };
+  useEffect(() => {
+    const fetchRepsAndOwner = async () => {
+      if (!dealIdURL) return;
+
+      try {
+        // 1. Fetch reps from NetSuite
+        const repsRes = await fetch("/api/netsuite/employees");
+        const reps = await repsRes.json();
+        setRepOptions(reps);
+
+        // 2. Fetch current HubSpot deal owner
+        const ownerRes = await fetch(`/api/set-deal-owner?dealId=${dealIdURL}`);
+        const { ownerEmail } = await ownerRes.json();
+
+        // 3. Match email to one of the reps
+        if (ownerEmail && reps.some((r) => r.email === ownerEmail)) {
+          setSelectedRepEmail(ownerEmail);
+        } else if (reps.length > 0) {
+          setSelectedRepEmail(reps[0].email); // fallback to first rep
+        }
+      } catch (e) {
+        console.error(" Failed to fetch reps or owner:", e);
+        toast.error("Failed to load rep data.", {
+          position: "bottom-center",
+          autoClose: 3000,
+        });
+      }
+    };
+
+    fetchRepsAndOwner();
+  }, [dealIdURL]);
+
+  //sales order useffect-
+  useEffect(() => {
+    const fetchSalesOrderInfo = async () => {
+      if (!dealIdURL) return;
+
+      try {
+        // Fetch tranid
+        const tranidRes = await fetch(`/api/tranid?dealId=${dealIdURL}`);
+        const { tranid } = await tranidRes.json();
+        console.log(" Loaded tranId from API route:", tranid);
+        setNetsuiteTranId(tranid);
+
+        // Fetch internal ID
+        const intIdRes = await fetch(`/api/so-int-id?dealId=${dealIdURL}`);
+        const { internalId } = await intIdRes.json();
+        console.log(" Loaded internal NetSuite ID from API route:", internalId);
+        await setNetsuiteInternalId(internalId);
+      } catch (err) {
+        console.error(" Failed to fetch sales order info:", err.message);
+      }
+    };
+
+    fetchSalesOrderInfo();
+  }, [dealIdURL]);
+
+  const handleRepChange = async (newRepEmail) => {
+    setSelectedRepEmail(newRepEmail);
+    console.log("Rep changed to:", newRepEmail);
+
+    try {
+      const dealId = dealIdURL;
+      const res = await fetch("/api/set-deal-owner", {
+        method: "POST",
+        body: JSON.stringify({ email: newRepEmail, dealId }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || "Unknown error");
+      }
+
+      toast.success(" Rep assigned successfully in HubSpot!", {
+        position: "top-center",
+        autoClose: 2500,
+      });
+    } catch (err) {
+      toast.error("Failed to assign rep. Please try again.", {
+        position: "top-center",
+        autoClose: 2500,
+      });
+      console.error("Error setting deal owner:", err.message);
+    }
+  };
+
+  const dealStatus = "closedWon";
+  console.log("**", netsuiteInternalId);
+  const tabs = [
+    { key: "info", label: "Info", component: <InfoTab /> },
+    {
+      key: "order",
+      label: dealStatus === "closedWon" ? "Order" : "Quote",
+      component: (
+        <OrderTab
+          netsuiteInternalId={netsuiteInternalId}
+          repOptions={repOptions}
         />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+      ),
+    },
+    ...(dealStatus === "closedWon"
+      ? [
+          {
+            key: "fulfillment",
+            label: "Fulfillment",
+            component: (
+              <FulfillmentTab netsuiteInternalId={netsuiteInternalId} />
+            ),
+          },
+        ]
+      : []),
+  ];
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      <OrderHeader
+        orderData={orderData}
+        repOptions={repOptions}
+        onRepChange={handleRepChange}
+      />
+      <MainTabs tabs={tabs} />
     </div>
   );
 }
+
+export default App;
