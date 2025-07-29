@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 
 import { toast } from "react-toastify";
 
@@ -159,5 +159,9 @@ function App() {
 }
 
 export default function Page() {
-  return <App />;
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <App />
+    </Suspense>
+  );
 }
