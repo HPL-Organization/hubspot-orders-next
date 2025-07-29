@@ -708,110 +708,98 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
           {salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0)}%
         </div>
       </div>
-      <Button
-        onClick={() => {
-          console.log("🧑‍🤝‍🧑 Sales Team Payload:", {
-            replaceAll: true,
-            items: salesTeam.map((member) => ({
-              employee: { id: member.id },
-              contribution: Number(member.contribution),
-              isPrimary: member.isPrimary,
-            })),
-          });
-        }}
-      >
-        Log
-      </Button>
 
       {/* Save Buttons */}
-      <Button onClick={handleSaveClick}>Save</Button>
-      <Button
-        disabled={creatingOrder}
-        onClick={async () => {
-          if (!contactId || !dealId) {
-            toast.error("Missing contact or deal ID.");
-            return;
-          }
+      <div className=" flex gap-1">
+        <Button onClick={handleSaveClick}>Save (Hubspot)</Button>
+        <Button
+          disabled={creatingOrder}
+          onClick={async () => {
+            if (!contactId || !dealId) {
+              toast.error("Missing contact or deal ID.");
+              return;
+            }
 
-          const totalContribution = salesTeam.reduce(
-            (sum, member) => sum + Number(member.contribution),
-            0
-          );
-
-          if (salesTeam.some((member) => !member.id)) {
-            toast.error(
-              "All Sales Team members must have a valid Sales Rep selected."
+            const totalContribution = salesTeam.reduce(
+              (sum, member) => sum + Number(member.contribution),
+              0
             );
-            return;
-          }
 
-          if (totalContribution < 100) {
-            toast.error("Total sales team contribution must be 100%");
-            return;
-          }
+            if (salesTeam.some((member) => !member.id)) {
+              toast.error(
+                "All Sales Team members must have a valid Sales Rep selected."
+              );
+              return;
+            }
 
-          setCreatingOrder(true); //  start loading state
+            if (totalContribution < 100) {
+              toast.error("Total sales team contribution must be 100%");
+              return;
+            }
 
-          try {
-            const lineItems = rows
-              .filter(
-                (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
-              )
-              .map((row) => ({
-                itemId: row.ns_item_id,
-                quantity: Number(row.quantity) || 1,
-                unitPrice: Number(row.unitPrice) || 0,
-                unitDiscount: Number(row.unitDiscount) || 0,
+            setCreatingOrder(true); //  start loading state
+
+            try {
+              const lineItems = rows
+                .filter(
+                  (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
+                )
+                .map((row) => ({
+                  itemId: row.ns_item_id,
+                  quantity: Number(row.quantity) || 1,
+                  unitPrice: Number(row.unitPrice) || 0,
+                  unitDiscount: Number(row.unitDiscount) || 0,
+                }));
+
+              const formattedSalesTeam = salesTeam.map((member) => ({
+                employee: { id: member.id },
+                contribution: Number(member.contribution),
+                isPrimary: member.isPrimary,
               }));
 
-            const formattedSalesTeam = salesTeam.map((member) => ({
-              employee: { id: member.id },
-              contribution: Number(member.contribution),
-              isPrimary: member.isPrimary,
-            }));
+              const payload = {
+                hubspotSoId: dealId,
+                hubspotContactId: contactId,
+                lineItems,
+                shipComplete,
+                salesTeam: {
+                  replaceAll: true,
+                  items: formattedSalesTeam,
+                },
+              };
 
-            const payload = {
-              hubspotSoId: dealId,
-              hubspotContactId: contactId,
-              lineItems,
-              shipComplete,
-              salesTeam: {
-                replaceAll: true,
-                items: formattedSalesTeam,
-              },
-            };
+              console.log(" Final Sales Order Payload to NetSuite:", payload);
 
-            console.log(" Final Sales Order Payload to NetSuite:", payload);
+              const res = await fetch("/api/netsuite/salesorder", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              console.log("Response status: in CSO", res.status);
+              let data;
+              try {
+                data = await res.json();
+              } catch {
+                data = null;
+              }
 
-            const res = await fetch("/api/netsuite/salesorder", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-            console.log("Response status: in CSO", res.status);
-            let data;
-            try {
-              data = await res.json();
-            } catch {
-              data = null;
+              if (!res.ok) {
+                throw new Error(data?.error || "Unknown error");
+              }
+
+              console.log(" Sales Order created:", data);
+              toast.success(" Sales Order submitted to NetSuite.");
+            } catch (err) {
+              console.error(" Sales Order creation failed:", err);
+              toast.error(" Failed to submit Sales Order.");
+            } finally {
+              setCreatingOrder(false); //  done
             }
-
-            if (!res.ok) {
-              throw new Error(data?.error || "Unknown error");
-            }
-
-            console.log(" Sales Order created:", data);
-            toast.success(" Sales Order submitted to NetSuite.");
-          } catch (err) {
-            console.error(" Sales Order creation failed:", err);
-            toast.error(" Failed to submit Sales Order.");
-          } finally {
-            setCreatingOrder(false); //  done
-          }
-        }}
-      >
-        {creatingOrder ? "Submitting..." : "Create Sales Order"}
-      </Button>
+          }}
+        >
+          {creatingOrder ? "Submitting..." : "Create Sales Order (Netsuite)"}
+        </Button>
+      </div>
     </div>
   );
 };
