@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import InputField from "../../../components/inputField";
-import Button from "../../../components/Button";
+import Button from "../../../components/button";
 import { useSearchParams } from "next/navigation";
 import { toast } from "react-toastify"; //  import toast
 
