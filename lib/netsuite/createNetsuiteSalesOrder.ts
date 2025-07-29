@@ -174,30 +174,16 @@ export async function createNetsuiteSalesOrder(
         },
       };
 
-      //  Step 1: Wipe existing sales team (Only way I could remove reps with zero contribution)
-      await axios.patch(
-        `${BASE_URL}/record/v1/salesOrder/${existingSOId}?replace=salesTeam`,
-        { salesTeam: { items: [] } },
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      //  1 way replace + add new payload
 
-      //  Step 2: Now reapply updated team with correct values (cleanedSalesTeam already built)
-      const response = await axios.patch(
-        `${BASE_URL}/record/v1/salesOrder/${existingSOId}`,
+      await axios.patch(
+        `${BASE_URL}/record/v1/salesOrder/${existingSOId}?replace=item,salesTeam`,
         {
-          salesTeam: {
-            replaceAll: true, // since we just cleared, now we can replace cleanly
-            items: cleanedSalesTeam,
-          },
           item: {
-            replaceAll: false,
-            items: filteredLines,
+            items: filteredLines, // your updated line items
+          },
+          salesTeam: {
+            items: cleanedSalesTeam, // your updated reps
           },
         },
         {
@@ -208,6 +194,28 @@ export async function createNetsuiteSalesOrder(
           },
         }
       );
+
+      //  Step 2: Now reapply updated team with correct values (cleanedSalesTeam already built)
+      // const response = await axios.patch(
+      //   `${BASE_URL}/record/v1/salesOrder/${existingSOId}`,
+      //   {
+      //     salesTeam: {
+      //       replaceAll: true, // since we just cleared, now we can replace cleanly
+      //       items: cleanedSalesTeam,
+      //     },
+      //     item: {
+      //       replaceAll: false,
+      //       items: filteredLines,
+      //     },
+      //   },
+      //   {
+      //     headers: {
+      //       Authorization: `Bearer ${accessToken}`,
+      //       Accept: "application/json",
+      //       "Content-Type": "application/json",
+      //     },
+      //   }
+      // );
     } else {
       console.log("🆕 Creating new Sales Order");
       await axios.post(`${BASE_URL}/record/v1/salesOrder`, payload, {

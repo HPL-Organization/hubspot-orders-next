@@ -13,6 +13,7 @@ import MainTabs from "../layouts/MainTabs";
 import OrderHeader from "../layouts/OrderHeader";
 
 import { getSalesOrderNumberFromDeal } from "../../lib/HubSpot";
+import { RepProvider, useRep } from "../../components/RepContext";
 
 function App() {
   const [repOptions, setRepOptions] = useState([]);
@@ -22,6 +23,8 @@ function App() {
 
   const searchParams = useSearchParams();
   const dealIdURL = searchParams.get("dealId");
+
+  const { setRepEmail } = useRep();
 
   const orderData = {
     orderNumber: netsuiteTranId || "No associated sales order",
@@ -85,6 +88,11 @@ function App() {
 
     fetchSalesOrderInfo();
   }, [dealIdURL]);
+
+  //useffect for rep
+  useEffect(() => {
+    setRepEmail(selectedRepEmail); // sync when it changes
+  }, [selectedRepEmail]);
 
   const handleRepChange = async (newRepEmail) => {
     setSelectedRepEmail(newRepEmail);
@@ -160,8 +168,10 @@ function App() {
 
 export default function Page() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <App />
-    </Suspense>
+    <RepProvider>
+      <Suspense fallback={<div>Loading...</div>}>
+        <App />
+      </Suspense>
+    </RepProvider>
   );
 }

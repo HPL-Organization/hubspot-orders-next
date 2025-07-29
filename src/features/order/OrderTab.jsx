@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import ListboxComponent from "../../../components/ListBoxComponent";
 import { Checkbox, FormControlLabel } from "@mui/material";
+import { useRep } from "../../../components/RepContext";
 
 const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   //make sure we have netsuite sales order internal id loaded-
@@ -52,6 +53,12 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   const [fulfilledItemIds, setFulfilledItemIds] = useState([]);
 
   const [creatingOrder, setCreatingOrder] = useState(false);
+
+  const [useMultiSalesTeam, setUseMultiSalesTeam] = useState(false);
+
+  const { repEmail } = useRep();
+  const defaultSalesRepId =
+    repOptions.find((r) => r.email === repEmail)?.id || "-5"; // fallback
 
   useEffect(() => {
     if (!dealId) return;
@@ -179,6 +186,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
             return {
               ...item,
+              ns_item_id: item.ns_item_id || item.id,
               lineItemId: item.lineItemId ?? item.id, // Ensure it's preserved
               total,
               fulfilled: fulfilledItemIds.includes(item.ns_item_id || item.id),
@@ -383,9 +391,17 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   ];
 
   const handleDelete = async (id) => {
+    console.log("🗑️ Deleting row with id:", id);
+    console.log("🧾 Current rows:", rows);
+    if (fulfilledItemIds.includes(id)) {
+      toast.error("Cannot delete a fulfilled line item.");
+      return;
+    }
     try {
       //  update UI
-      setRows((prev) => prev.filter((row) => row.id !== id));
+      setRows((prev) =>
+        prev.filter((row) => row.id !== id && row.lineItemId !== id)
+      );
       setSelectedGridProducts((prev) => prev.filter((p) => p.id !== id));
 
       // Call backend to delete from HubSpot
@@ -417,7 +433,11 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
     const discountedPrice = price * (1 - discount / 100);
     const total = qty * discountedPrice;
 
-    const updatedRow = { ...newRow, total, unitDiscount: discount };
+    const updatedRow = {
+      ...newRow,
+      total,
+      unitDiscount: discount,
+    };
 
     const updatedRows = rows.map((row) =>
       row.id === newRow.id ? updatedRow : row
@@ -451,6 +471,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
       const productRow = {
         rowId: Date.now() + Math.random(),
         id: product.id,
+        ns_item_id: product.id,
         sku: product.sku,
         productName: product.name,
         comment: "",
@@ -595,119 +616,134 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
           maximumFractionDigits: 2,
         })}
       </div>
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={shipComplete}
-            onChange={(e) => setShipComplete(e.target.checked)}
-            color="primary"
-            className=" text-black"
-          />
-        }
-        label="Ship Complete (send to NetSuite)"
-        sx={{ color: "black" }}
-      />
-      {/* sales team UI */}
-      <div className="mt-6">
-        <h2 className="text-lg font-semibold text-black mb-2">Sales Team</h2>
-        {salesTeam.map((member, index) => (
-          <div key={index} className="flex items-center gap-4 mb-2">
-            <TextField
-              select
-              label="Sales Rep"
-              value={member.id}
-              onChange={(e) => {
-                const newTeam = [...salesTeam];
-                newTeam[index].id = e.target.value;
-                setSalesTeam(newTeam);
-              }}
-              size="small"
-              sx={{ width: 200 }}
-            >
-              {repOptions.map((rep) => (
-                <MenuItem key={rep.id} value={rep.id}>
-                  {rep.name}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              label="Contribution %"
-              type="number"
-              inputProps={{ min: 0, max: 100 }}
-              value={member.contribution}
-              onChange={(e) => {
-                const inputVal = Number(e.target.value);
-                const currentTotal = salesTeam.reduce(
-                  (sum, m, i) =>
-                    sum + (i === index ? 0 : Number(m.contribution)),
-                  0
-                );
-
-                if (inputVal + currentTotal > 100) {
-                  toast.error("Total contribution cannot exceed 100%");
-                  return;
-                }
-
-                const newTeam = [...salesTeam];
-                newTeam[index].contribution = inputVal;
-                setSalesTeam(newTeam);
-              }}
-            />
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={member.isPrimary}
-                  onChange={() => {
-                    setSalesTeam((prev) =>
-                      prev.map((m, i) => ({
-                        ...m,
-                        isPrimary: i === index,
-                      }))
-                    );
-                  }}
-                />
-              }
+      <div className="flex flex-col ">
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={shipComplete}
+              onChange={(e) => setShipComplete(e.target.checked)}
+              color="primary"
               className=" text-black"
-              label="Primary"
             />
-
-            {salesTeam.length > 1 && (
-              <MuiButton
-                size="small"
-                color="error"
-                onClick={() =>
-                  setSalesTeam((prev) => prev.filter((_, i) => i !== index))
-                }
-              >
-                Remove
-              </MuiButton>
-            )}
-          </div>
-        ))}
-
-        <MuiButton
-          size="small"
-          variant="outlined"
-          disabled={
-            salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0) >= 100
           }
-          onClick={() =>
-            setSalesTeam((prev) => [
-              ...prev,
-              { id: "", contribution: 0, isPrimary: false },
-            ])
+          label="Ship Complete (send to NetSuite)"
+          sx={{ color: "black" }}
+        />
+        {/* sales team UI */}
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={useMultiSalesTeam}
+              onChange={(e) => setUseMultiSalesTeam(e.target.checked)}
+            />
           }
-        >
-          Add Member
-        </MuiButton>
-
-        <div className="text-sm text-gray-600 mt-2">
-          Total Contribution:{" "}
-          {salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0)}%
-        </div>
+          label="Want to add multiple sales contributions?"
+          sx={{ color: "black", mt: 1 }}
+        />
       </div>
+      {useMultiSalesTeam && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold text-black mb-2">Sales Team</h2>
+          {salesTeam.map((member, index) => (
+            <div key={index} className="flex items-center gap-4 mb-2">
+              <TextField
+                select
+                label="Sales Rep"
+                value={member.id}
+                onChange={(e) => {
+                  const newTeam = [...salesTeam];
+                  newTeam[index].id = e.target.value;
+                  setSalesTeam(newTeam);
+                }}
+                size="small"
+                sx={{ width: 200 }}
+              >
+                {repOptions.map((rep) => (
+                  <MenuItem key={rep.id} value={rep.id}>
+                    {rep.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                label="Contribution %"
+                type="number"
+                inputProps={{ min: 0, max: 100 }}
+                value={member.contribution}
+                onChange={(e) => {
+                  const inputVal = Number(e.target.value);
+                  const currentTotal = salesTeam.reduce(
+                    (sum, m, i) =>
+                      sum + (i === index ? 0 : Number(m.contribution)),
+                    0
+                  );
+
+                  if (inputVal + currentTotal > 100) {
+                    toast.error("Total contribution cannot exceed 100%");
+                    return;
+                  }
+
+                  const newTeam = [...salesTeam];
+                  newTeam[index].contribution = inputVal;
+                  setSalesTeam(newTeam);
+                }}
+              />
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={member.isPrimary}
+                    onChange={() => {
+                      setSalesTeam((prev) =>
+                        prev.map((m, i) => ({
+                          ...m,
+                          isPrimary: i === index,
+                        }))
+                      );
+                    }}
+                  />
+                }
+                className=" text-black"
+                label="Primary"
+              />
+
+              {salesTeam.length > 1 && (
+                <MuiButton
+                  size="small"
+                  color="error"
+                  onClick={() =>
+                    setSalesTeam((prev) => prev.filter((_, i) => i !== index))
+                  }
+                >
+                  Remove
+                </MuiButton>
+              )}
+            </div>
+          ))}
+
+          <MuiButton
+            size="small"
+            variant="outlined"
+            disabled={
+              salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0) >=
+              100
+            }
+            onClick={() =>
+              setSalesTeam((prev) => [
+                ...prev,
+                { id: "", contribution: 0, isPrimary: false },
+              ])
+            }
+          >
+            Add Member
+          </MuiButton>
+
+          <div className="text-sm text-gray-600 mt-2">
+            Total Contribution:{" "}
+            {salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0)}%
+          </div>
+        </div>
+      )}
 
       {/* Save Buttons */}
       <div className=" flex gap-1">
@@ -740,22 +776,67 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
             setCreatingOrder(true); //  start loading state
 
             try {
+              //working line items(CRUD complete)
               const lineItems = rows
                 .filter(
                   (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
                 )
-                .map((row) => ({
-                  itemId: row.ns_item_id,
-                  quantity: Number(row.quantity) || 1,
-                  unitPrice: Number(row.unitPrice) || 0,
-                  unitDiscount: Number(row.unitDiscount) || 0,
-                }));
 
-              const formattedSalesTeam = salesTeam.map((member) => ({
-                employee: { id: member.id },
-                contribution: Number(member.contribution),
-                isPrimary: member.isPrimary,
-              }));
+                .map((row, index) => {
+                  if (!row.ns_item_id) {
+                    console.warn(
+                      "⚠️ Missing ns_item_id for row:",
+                      row,
+                      "at index",
+                      index
+                    );
+                  }
+                  return {
+                    itemId: row.ns_item_id,
+                    quantity: Number(row.quantity) || 1,
+                    unitPrice: Number(row.unitPrice) || 0,
+                    unitDiscount: Number(row.unitDiscount) || 0,
+                  };
+                });
+
+              //testing new line items **
+              //   const unfulfilledLines = rows
+              //     .filter(
+              //       (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
+              //     )
+              //     .map((row) => ({
+              //       itemId: row.ns_item_id,
+              //       quantity: Number(row.quantity) || 1,
+              //       unitPrice: Number(row.unitPrice) || 0,
+              //       unitDiscount: Number(row.unitDiscount) || 0,
+              //     }));
+              //   const fulfilledLinesToEdit = rows
+              //     .filter((row) =>
+              //       fulfilledItemIds.includes(row.ns_item_id || row.id)
+              //     )
+              //     .map((row) => ({
+              //       line: row.lineItemId, // NetSuite line number
+              //       itemId: row.ns_item_id,
+              //       quantity: Number(row.quantity) || 0,
+              //       unitPrice: Number(row.unitPrice) || 0,
+              //       unitDiscount: Number(row.unitDiscount) || 0,
+              //     }));
+
+              console.log("Line items to netsuite", lineItems);
+
+              const formattedSalesTeam = useMultiSalesTeam
+                ? salesTeam.map((member) => ({
+                    employee: { id: member.id },
+                    contribution: Number(member.contribution),
+                    isPrimary: member.isPrimary,
+                  }))
+                : [
+                    {
+                      employee: { id: defaultSalesRepId },
+                      contribution: 100,
+                      isPrimary: true,
+                    },
+                  ];
 
               const payload = {
                 hubspotSoId: dealId,
@@ -766,6 +847,8 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
                   replaceAll: true,
                   items: formattedSalesTeam,
                 },
+                //unfulfilledLines,
+                //fulfilledLinesToEdit,
               };
 
               console.log(" Final Sales Order Payload to NetSuite:", payload);
@@ -797,7 +880,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
             }
           }}
         >
-          {creatingOrder ? "Submitting..." : "Create Sales Order (Netsuite)"}
+          {creatingOrder ? "Submitting..." : "Save to Netsuite"}
         </Button>
       </div>
     </div>
