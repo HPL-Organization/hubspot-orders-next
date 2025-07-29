@@ -158,4 +158,6 @@ function App() {
   );
 }
 
-export default App;
+export default function Page() {
+  return <App />;
+}
