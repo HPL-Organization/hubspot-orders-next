@@ -13,7 +13,7 @@ import { SignJWT, importPKCS8 } from "jose";
 const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const CONSUMER_KEY = process.env.NETSUITE_CONSUMER_KEY!;
 const PRIVATE_KEY_PEM = process.env.NETSUITE_PRIVATE_KEY!.replace(/\\n/g, "\n");
-console.log("PRIVATE KEY STARTS WITH:", PRIVATE_KEY_PEM.slice(0, 30));
+//console.log("PRIVATE KEY STARTS WITH:", PRIVATE_KEY_PEM.slice(0, 30));
 
 const CERTIFICATE_ID = process.env.NETSUITE_CERTIFICATE_ID; // optional
 
@@ -43,7 +43,7 @@ export async function getValidToken(): Promise<string> {
     value: token,
     expiresAt: now + 55 * 60 * 1000,
   };
-  console.log(token);
+  //console.log(token);
   return token;
 }
 
