@@ -130,58 +130,68 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
         )}
       </div>
 
-      {fulfillments?.map((fulfillment) => {
-        console.log("Rendering items:", fulfillment.items);
-        return (
-          <Accordion key={fulfillment.id} className="mb-4">
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
-              className="bg-gray-50"
-            >
-              <div className="flex justify-between w-full">
-                <Typography className="font-semibold">
-                  {fulfillment.number}
-                </Typography>
-                <Typography className="text-gray-600">
-                  {fulfillment.status || "Status Unknown"} —{" "}
-                  {formatDate(fulfillment.shippedAt)}
-                </Typography>
-              </div>
-            </AccordionSummary>
+      {loading ? (
+        <Typography className="text-gray-600 mt-4">
+          Loading fulfillments...
+        </Typography>
+      ) : fulfillments.length === 0 ? (
+        <Typography className="text-gray-600 mt-4">
+          No fulfillments related to this sales order.
+        </Typography>
+      ) : (
+        fulfillments.map((fulfillment) => {
+          console.log("Rendering items:", fulfillment.items);
+          return (
+            <Accordion key={fulfillment.id} className="mb-4">
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon />}
+                className="bg-gray-50"
+              >
+                <div className="flex justify-between w-full">
+                  <Typography className="font-semibold">
+                    {fulfillment.number}
+                  </Typography>
+                  <Typography className="text-gray-600">
+                    {fulfillment.status || "Status Unknown"} —{" "}
+                    {formatDate(fulfillment.shippedAt)}
+                  </Typography>
+                </div>
+              </AccordionSummary>
 
-            <AccordionDetails>
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead className="bg-gray-100">
-                    <TableRow>
-                      <TableCell>SKU</TableCell>
-                      <TableCell>Display Name</TableCell>
-                      <TableCell>Quantity Shipped</TableCell>
-                      <TableCell>Tracking #</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {fulfillment.items?.length > 0 ? (
-                      fulfillment.items.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{item.sku || "—"}</TableCell>
-                          <TableCell>{item.productName || "—"}</TableCell>
-                          <TableCell>{item.quantity || "—"}</TableCell>
-                          <TableCell>{item.tracking || "—"}</TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
+              <AccordionDetails>
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead className="bg-gray-100">
                       <TableRow>
-                        <TableCell colSpan={4}>No items found.</TableCell>
+                        <TableCell>SKU</TableCell>
+                        <TableCell>Display Name</TableCell>
+                        <TableCell>Quantity Shipped</TableCell>
+                        <TableCell>Tracking #</TableCell>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </AccordionDetails>
-          </Accordion>
-        );
-      })}
+                    </TableHead>
+                    <TableBody>
+                      {fulfillment.items?.length > 0 ? (
+                        fulfillment.items.map((item, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{item.sku || "—"}</TableCell>
+                            <TableCell>{item.productName || "—"}</TableCell>
+                            <TableCell>{item.quantity || "—"}</TableCell>
+                            <TableCell>{item.tracking || "—"}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={4}>No items found.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </AccordionDetails>
+            </Accordion>
+          );
+        })
+      )}
     </div>
   );
 };
