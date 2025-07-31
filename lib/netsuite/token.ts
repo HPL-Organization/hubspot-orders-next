@@ -43,7 +43,7 @@ export async function getValidToken(): Promise<string> {
     value: token,
     expiresAt: now + 55 * 60 * 1000,
   };
-  //console.log(token);
+  console.log(token);
   return token;
 }
 

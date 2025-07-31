@@ -4,6 +4,8 @@ import {
   updateDealWithSalesOrder,
   updateDealWithSalesOrderInternalId,
 } from "../HubSpot";
+import { getInvoiceLineId } from "./getInvoiceLineId";
+import { getInvoicesForSalesOrder } from "./getInvoicesForSalesOrder";
 
 const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
@@ -16,6 +18,7 @@ export async function createNetsuiteSalesOrder(
     quantity: number;
     unitPrice: number;
     unitDiscount: number;
+    isClosed: boolean;
   }[],
   shipComplete: boolean,
   salesTeam: {
@@ -65,9 +68,9 @@ export async function createNetsuiteSalesOrder(
 
   try {
     if (existingSOId) {
-      console.log(`🔁 Updating existing Sales Order ${existingSOId}`);
+      console.log(` Updating existing Sales Order ${existingSOId}`);
 
-      // 🔍 Fetch existing SO line items
+      //  Fetch existing SO line items
       const existingLineMap: Record<string, string[]> = {};
       const fulfilledLines = new Set<string>();
       const getResp = await axios.get(
@@ -113,6 +116,7 @@ export async function createNetsuiteSalesOrder(
           }
         }
       }
+      const patchedLineIdMap: Record<string, string> = {};
 
       //  Reconstruct itemLines for update only (skip fulfilled)
       const usedLineIds = new Set<string>();
@@ -120,24 +124,113 @@ export async function createNetsuiteSalesOrder(
       const filteredLines = lineItems
         .filter((item) => !fulfilledLines.has(item.itemId))
         .map((item) => {
-          const base = {
-            item: { id: item.itemId },
-            quantity: item.quantity,
-            rate: item.unitPrice * (1 - item.unitDiscount / 100),
-          };
+          const isClosing = item.isClosed === true;
+
+          const base = isClosing
+            ? {
+                item: { id: item.itemId },
+                quantity: 0,
+                rate: 0,
+                amount: 0,
+                isClosed: true,
+              }
+            : {
+                item: { id: item.itemId },
+                quantity: item.quantity,
+                rate: item.unitPrice * (1 - item.unitDiscount / 100),
+              };
 
           const lineIdList = existingLineMap[item.itemId];
           if (lineIdList && lineIdList.length > 0) {
             const lineId = lineIdList.shift();
             if (lineId && !usedLineIds.has(lineId)) {
               usedLineIds.add(lineId);
+              patchedLineIdMap[item.itemId] = lineId;
+              const lineItem = { ...base, line: lineId };
+              console.log("✅ LineItem PATCH →", JSON.stringify(lineItem));
               return { ...base, line: lineId };
             }
           }
+          console.log("✅ NEW LineItem (no line ref) →", JSON.stringify(base));
 
-          // fallback: new line (no .line set)
           return base;
         });
+
+      //invoice sync logic based on sales line item
+
+      for (const [itemId, previousLineId] of Object.entries(patchedLineIdMap)) {
+        console.log(
+          ` Attempting invoice lookup for item ${itemId} → SO line ${previousLineId}`
+        );
+
+        const invoices = await getInvoicesForSalesOrder(existingSOId);
+        const invoiceId = invoices?.[0]?.id;
+
+        if (!invoiceId) {
+          console.warn(` No invoice found for SO ${existingSOId}`);
+          continue;
+        }
+
+        const result = await getInvoiceLineId({
+          invoiceId: Number(invoiceId),
+          salesOrderId: Number(existingSOId),
+          previousLineId: Number(previousLineId),
+        });
+
+        if (result) {
+          console.log(` Invoice Line Sync for item ${itemId}:`, result);
+          const invoiceLineId = result.invoicelineid;
+          const invoiceItemId = result.itemid;
+          const invoiceQty = Math.abs(Number(result.quantity));
+          const invoiceRate = Math.abs(Number(result.rate));
+
+          const updatedItem = lineItems.find((i) => i.itemId === itemId);
+          if (!updatedItem) continue;
+
+          const expectedQty = updatedItem.quantity;
+          const expectedRate =
+            updatedItem.unitPrice * (1 - updatedItem.unitDiscount / 100);
+
+          const quantityMismatch = invoiceQty !== expectedQty;
+          const rateMismatch = invoiceRate !== expectedRate;
+
+          if (quantityMismatch || rateMismatch) {
+            console.log(
+              ` Updating Invoice Line: ${invoiceLineId} for item ${itemId}`
+            );
+            await axios.patch(
+              `${BASE_URL}/record/v1/invoice/${invoiceId}`,
+              {
+                item: {
+                  replaceAll: false,
+                  items: [
+                    {
+                      line: Number(invoiceLineId),
+                      item: { id: invoiceItemId },
+                      quantity: expectedQty,
+                      rate: expectedRate,
+                    },
+                  ],
+                },
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+          } else {
+            console.log(
+              "Invoice already in sync for Invoice LI",
+              invoiceLineId
+            );
+          }
+        } else {
+          console.log(` No matching invoice line found for item ${itemId}`);
+        }
+      }
 
       //  Rebuild sales team to avoid NetSuite 110% error
       const existingSalesTeam = getResp.data.salesTeam?.items || [];
@@ -174,18 +267,10 @@ export async function createNetsuiteSalesOrder(
         },
       };
 
-      //  1 way replace + add new payload
-
+      //  Step 1: Wipe existing sales team (Only way I could remove reps with zero contribution)
       await axios.patch(
-        `${BASE_URL}/record/v1/salesOrder/${existingSOId}?replace=item,salesTeam`,
-        {
-          item: {
-            items: filteredLines, // your updated line items
-          },
-          salesTeam: {
-            items: cleanedSalesTeam, // your updated reps
-          },
-        },
+        `${BASE_URL}/record/v1/salesOrder/${existingSOId}?replace=salesTeam`,
+        { salesTeam: { items: [] } },
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -196,28 +281,28 @@ export async function createNetsuiteSalesOrder(
       );
 
       //  Step 2: Now reapply updated team with correct values (cleanedSalesTeam already built)
-      // const response = await axios.patch(
-      //   `${BASE_URL}/record/v1/salesOrder/${existingSOId}`,
-      //   {
-      //     salesTeam: {
-      //       replaceAll: true, // since we just cleared, now we can replace cleanly
-      //       items: cleanedSalesTeam,
-      //     },
-      //     item: {
-      //       replaceAll: false,
-      //       items: filteredLines,
-      //     },
-      //   },
-      //   {
-      //     headers: {
-      //       Authorization: `Bearer ${accessToken}`,
-      //       Accept: "application/json",
-      //       "Content-Type": "application/json",
-      //     },
-      //   }
-      // );
+      const response = await axios.patch(
+        `${BASE_URL}/record/v1/salesOrder/${existingSOId}`,
+        {
+          salesTeam: {
+            replaceAll: true, // since we just cleared, now we can replace cleanly
+            items: cleanedSalesTeam,
+          },
+          item: {
+            replaceAll: false,
+            items: filteredLines,
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        }
+      );
     } else {
-      console.log("🆕 Creating new Sales Order");
+      console.log(" Creating new Sales Order");
       await axios.post(`${BASE_URL}/record/v1/salesOrder`, payload, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -226,7 +311,7 @@ export async function createNetsuiteSalesOrder(
         },
       });
 
-      // 🔁 Fallback: find created Sales Order ID using HubSpot ID
+      //  Fallback: find created Sales Order ID using HubSpot ID
       const createdId = await findSalesOrderByHubspotSoId(
         hubspotSoId,
         accessToken
@@ -250,7 +335,7 @@ export async function createNetsuiteSalesOrder(
       );
 
       const tranid = suiteqlResp.data.items?.[0]?.tranid;
-      console.log("✅ Fixed: Sales Order Number (tranid) via SuiteQL:", tranid);
+      console.log(" Fixed: Sales Order Number (tranid) via SuiteQL:", tranid);
 
       await updateDealWithSalesOrder(hubspotSoId, tranid);
       await updateDealWithSalesOrderInternalId(hubspotSoId, createdId);
@@ -262,7 +347,7 @@ export async function createNetsuiteSalesOrder(
       };
     }
   } catch (error: any) {
-    console.error("❌ Failed to create/update Sales Order:");
+    console.error(" Failed to create/update Sales Order:");
     if (error.response) {
       console.error("Status:", error.response.status);
       console.error("Data:", JSON.stringify(error.response.data, null, 2));

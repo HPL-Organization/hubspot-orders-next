@@ -47,6 +47,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [loadingAllProducts, setLoadingAllProducts] = useState(true);
   const [shipComplete, setShipComplete] = useState(false);
+  const [deletedRows, setDeletedRows] = useState([]);
 
   const [contactId, setContactId] = useState(null);
 
@@ -59,6 +60,9 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   const { repEmail } = useRep();
   const defaultSalesRepId =
     repOptions.find((r) => r.email === repEmail)?.id || "-5"; // fallback
+
+  // invoices logic
+  const [invoices, setInvoices] = useState([]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -132,20 +136,20 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
             const finalCatalog = [...prev, ...newUniqueItems];
 
             console.log(
-              "✅ Deduplicated merge complete. Final count:",
+              " Deduplicated merge complete. Final count:",
               finalCatalog.length
             );
             return finalCatalog;
           });
           console.log(
-            "✅ All products loaded. Final count:",
+            " All products loaded. Final count:",
             finalCatalog.length
           );
 
           setAllProductsFetched(true);
         }
       } catch (err) {
-        console.error("❌ Background fetch failed:", err);
+        console.error(" Background fetch failed:", err);
       }
     };
 
@@ -258,6 +262,26 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
     };
 
     fetchSalesTeam();
+  }, [netsuiteInternalId]);
+
+  //useffect for fetching related invoices
+  useEffect(() => {
+    if (!netsuiteInternalId) return;
+
+    const fetchInvoices = async () => {
+      try {
+        const res = await fetch(
+          `/api/netsuite/invoices?internalId=${netsuiteInternalId}`
+        );
+        const data = await res.json();
+        console.log(" Related Invoices:", data.invoices);
+        setInvoices(data.invoices || []);
+      } catch (err) {
+        console.error(" Failed to fetch related invoices:", err);
+      }
+    };
+
+    fetchInvoices();
   }, [netsuiteInternalId]);
 
   const handleSaveClick = async () => {
@@ -391,17 +415,47 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   ];
 
   const handleDelete = async (id) => {
-    console.log("🗑️ Deleting row with id:", id);
-    console.log("🧾 Current rows:", rows);
-    if (fulfilledItemIds.includes(id)) {
+    const matchedRow = rows.find(
+      (row) => row.id === id || row.lineItemId === id
+    );
+    const itemIdToCheck = String(
+      matchedRow?.ns_item_id || matchedRow?.id || id
+    );
+    console.log("🔍 Matched row:", matchedRow);
+    console.log("🔍 Checking item ID:", itemIdToCheck);
+    if (fulfilledItemIds.includes(itemIdToCheck)) {
       toast.error("Cannot delete a fulfilled line item.");
       return;
     }
+
     try {
-      //  update UI
+      // 1. Find the row being deleted
+      const deletedRow = rows.find(
+        (row) => row.id === id || row.lineItemId === id
+      );
+      if (!deletedRow) return;
+
+      // 2. Remove from UI (rows)
       setRows((prev) =>
         prev.filter((row) => row.id !== id && row.lineItemId !== id)
       );
+
+      // 3. Add to deletedRows with isClosed: true
+      if (deletedRow.lineItemId) {
+        //skip frontend only temp rows (trying to delete non existent items)
+        setDeletedRows((prev) => [
+          ...prev,
+          {
+            ...deletedRow,
+            isClosed: true,
+            quantity: 0,
+            unitPrice: 0,
+            total: 0,
+          },
+        ]);
+      }
+
+      // 4. Remove from grid products
       setSelectedGridProducts((prev) => prev.filter((p) => p.id !== id));
 
       // Call backend to delete from HubSpot
@@ -777,27 +831,17 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
             try {
               //working line items(CRUD complete)
-              const lineItems = rows
-                .filter(
-                  (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
-                )
+              const visibleRows = rows.filter(
+                (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
+              );
 
-                .map((row, index) => {
-                  if (!row.ns_item_id) {
-                    console.warn(
-                      "⚠️ Missing ns_item_id for row:",
-                      row,
-                      "at index",
-                      index
-                    );
-                  }
-                  return {
-                    itemId: row.ns_item_id,
-                    quantity: Number(row.quantity) || 1,
-                    unitPrice: Number(row.unitPrice) || 0,
-                    unitDiscount: Number(row.unitDiscount) || 0,
-                  };
-                });
+              const lineItems = [...visibleRows, ...deletedRows].map((row) => ({
+                itemId: row.ns_item_id,
+                quantity: Number(row.quantity) || 1,
+                unitPrice: Number(row.unitPrice) || 0,
+                unitDiscount: Number(row.unitDiscount) || 0,
+                isClosed: row.isClosed === true,
+              }));
 
               //testing new line items **
               //   const unfulfilledLines = rows
@@ -882,7 +926,43 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
         >
           {creatingOrder ? "Submitting..." : "Save to Netsuite"}
         </Button>
+        <Button
+          onClick={async () => {
+            const res = await fetch("/api/netsuite/invoice-line-id", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                invoiceId: 7124,
+                salesOrderId: 6810,
+                previousLineId: 114,
+              }),
+            });
+
+            const data = await res.json();
+            console.log(" Invoice Line Result:", data.result);
+          }}
+        >
+          Get Invoice line id test
+        </Button>
       </div>
+
+      {/* Invoice UI */}
+      {invoices.length > 0 && (
+        <div className="mt-4">
+          <h2 className="text-xl font-semibold text-black mb-2">
+            Related Invoices
+          </h2>
+          <ul className="text-sm text-gray-800">
+            {invoices.map((invoice) => (
+              <li key={invoice.id}>
+                #{invoice.tranid} – {invoice.status ?? "-"} – ${invoice.total}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };
