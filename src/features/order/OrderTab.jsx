@@ -325,14 +325,14 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
             return {
               ...row,
               id: newId,
-              lineItemId: newId, // ✅ Update this as well!
+              lineItemId: newId,
             };
           }
           return row;
         })
       );
 
-      toast.success("Line items saved successfully!");
+      toast.success("Line items saved successfully in Hubspot Deal!");
     } catch (err) {
       console.error(" Save Trigger Failed:", err);
       toast.error("Failed to save line items.");
@@ -421,8 +421,8 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
     const itemIdToCheck = String(
       matchedRow?.ns_item_id || matchedRow?.id || id
     );
-    console.log("🔍 Matched row:", matchedRow);
-    console.log("🔍 Checking item ID:", itemIdToCheck);
+    console.log(" Matched row:", matchedRow);
+    console.log(" Checking item ID:", itemIdToCheck);
     if (fulfilledItemIds.includes(itemIdToCheck)) {
       toast.error("Cannot delete a fulfilled line item.");
       return;
@@ -553,7 +553,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
     setSelectedProducts([]);
   };
 
-  console.log("🔢 Final productCatalog size:", productCatalog.length);
+  console.log(" Final productCatalog size:", productCatalog.length);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -801,10 +801,10 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
       {/* Save Buttons */}
       <div className=" flex gap-1">
-        <Button onClick={handleSaveClick}>Save (Hubspot)</Button>
         <Button
           disabled={creatingOrder}
           onClick={async () => {
+            handleSaveClick();
             if (!contactId || !dealId) {
               toast.error("Missing contact or deal ID.");
               return;
@@ -842,29 +842,6 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
                 unitDiscount: Number(row.unitDiscount) || 0,
                 isClosed: row.isClosed === true,
               }));
-
-              //testing new line items **
-              //   const unfulfilledLines = rows
-              //     .filter(
-              //       (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
-              //     )
-              //     .map((row) => ({
-              //       itemId: row.ns_item_id,
-              //       quantity: Number(row.quantity) || 1,
-              //       unitPrice: Number(row.unitPrice) || 0,
-              //       unitDiscount: Number(row.unitDiscount) || 0,
-              //     }));
-              //   const fulfilledLinesToEdit = rows
-              //     .filter((row) =>
-              //       fulfilledItemIds.includes(row.ns_item_id || row.id)
-              //     )
-              //     .map((row) => ({
-              //       line: row.lineItemId, // NetSuite line number
-              //       itemId: row.ns_item_id,
-              //       quantity: Number(row.quantity) || 0,
-              //       unitPrice: Number(row.unitPrice) || 0,
-              //       unitDiscount: Number(row.unitDiscount) || 0,
-              //     }));
 
               console.log("Line items to netsuite", lineItems);
 
@@ -924,27 +901,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
             }
           }}
         >
-          {creatingOrder ? "Submitting..." : "Save to Netsuite"}
-        </Button>
-        <Button
-          onClick={async () => {
-            const res = await fetch("/api/netsuite/invoice-line-id", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                invoiceId: 7124,
-                salesOrderId: 6810,
-                previousLineId: 114,
-              }),
-            });
-
-            const data = await res.json();
-            console.log(" Invoice Line Result:", data.result);
-          }}
-        >
-          Get Invoice line id test
+          {creatingOrder ? "Submitting..." : "Save to Netsuite and Hubspot"}
         </Button>
       </div>
 
