@@ -27,5 +27,12 @@ export async function getInvoicesForSalesOrder(soId: string) {
     }
   );
 
-  return resp.data.items || [];
+  const invoices = resp.data.items || ([] as any[]);
+
+  // Filter out duplicates based on the invoice ID
+  const uniqueInvoices = Array.from(
+    new Map(invoices.map((inv) => [inv.id, inv])).values()
+  );
+
+  return invoices as any[];
 }

@@ -41,6 +41,9 @@ const InfoTab = () => {
     sameAsShipping: false,
   });
 
+  const [showShipping, setShowShipping] = useState(false);
+  const [showBilling, setShowBilling] = useState(false);
+
   useEffect(() => {
     if (!dealId) return;
 
@@ -252,40 +255,50 @@ const InfoTab = () => {
         />
       </div>
 
-      <div className="mb-6">
-        <label className="block text-gray-700 mb-1">
-          <span className=" text-blue-500 font-bold">Google</span> Address
-          Lookup
-        </label>
-        <GoogleMapsLoader>
-          <AddressAutocomplete
-            onAddressSelect={(parsed) => {
-              handleAddressChange("shipping", "address1", parsed.address1);
-              handleAddressChange("shipping", "city", parsed.city);
-              handleAddressChange("shipping", "state", parsed.state);
-              handleAddressChange("shipping", "zip", parsed.zip);
-              handleAddressChange("shipping", "country", parsed.country);
-            }}
-          />
-        </GoogleMapsLoader>
+      <div
+        className="flex items-center justify-between cursor-pointer mb-4 p-4 rounded-2xl bg-white/30 backdrop-blur-sm border border-white/40 shadow-md hover:shadow-lg transition"
+        onClick={() => setShowShipping((prev) => !prev)}
+      >
+        <h2 className="text-lg font-semibold text-black">Shipping Address</h2>
+        <span className="text-black text-xl">{showShipping ? "▲" : "▼"}</span>
       </div>
-      <h2 className="text-lg font-semibold mb-2 text-black">
-        Shipping Address
-      </h2>
-      <div className="grid grid-cols-2 gap-4 mb-6 text-black">
-        {["address1", "city", "address2", "state", "zip", "country"].map(
-          (field) => (
-            <InputField
-              key={field}
-              label={field.charAt(0).toUpperCase() + field.slice(1)}
-              value={formData.shipping[field]}
-              onChange={(e) =>
-                handleAddressChange("shipping", field, e.target.value)
-              }
-            />
-          )
-        )}
-      </div>
+
+      {showShipping && (
+        <>
+          <div className="mb-4">
+            <label className="block text-gray-700 mb-1">
+              <span className="text-blue-500 font-bold">Google</span> Shipping
+              Address Lookup
+            </label>
+            <GoogleMapsLoader>
+              <AddressAutocomplete
+                onAddressSelect={(parsed) => {
+                  handleAddressChange("shipping", "address1", parsed.address1);
+                  handleAddressChange("shipping", "city", parsed.city);
+                  handleAddressChange("shipping", "state", parsed.state);
+                  handleAddressChange("shipping", "zip", parsed.zip);
+                  handleAddressChange("shipping", "country", parsed.country);
+                }}
+              />
+            </GoogleMapsLoader>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-6 text-black">
+            {["address1", "city", "address2", "state", "zip", "country"].map(
+              (field) => (
+                <InputField
+                  key={field}
+                  label={field.charAt(0).toUpperCase() + field.slice(1)}
+                  value={formData.shipping[field]}
+                  onChange={(e) =>
+                    handleAddressChange("shipping", field, e.target.value)
+                  }
+                />
+              )
+            )}
+          </div>
+        </>
+      )}
 
       <div className="mb-4">
         <label className="flex items-center space-x-2">
@@ -297,45 +310,64 @@ const InfoTab = () => {
           <span className="text-gray-700">Billing same as Shipping</span>
         </label>
       </div>
-      {!formData.sameAsShipping && (
-        <div className="mb-6">
-          <label className="block text-gray-700 mb-1">
-            <span className=" text-blue-500 font-bold">Google</span> Billing
-            Address Lookup
-          </label>
-          <GoogleMapsLoader>
-            <AddressAutocomplete
-              onAddressSelect={(parsed) => {
-                handleAddressChange("billing", "address1", parsed.address1);
-                handleAddressChange("billing", "city", parsed.city);
-                handleAddressChange("billing", "state", parsed.state);
-                handleAddressChange("billing", "zip", parsed.zip);
-                handleAddressChange("billing", "country", parsed.country);
-              }}
-            />
-          </GoogleMapsLoader>
-        </div>
-      )}
 
       {!formData.sameAsShipping && (
         <>
-          <h2 className="text-lg font-semibold mb-2 text-black">
-            Billing Address
-          </h2>
-          <div className="grid grid-cols-2 gap-4 mb-6 text-black">
-            {["address1", "city", "address2", "state", "zip", "country"].map(
-              (field) => (
-                <InputField
-                  key={field}
-                  label={field.charAt(0).toUpperCase() + field.slice(1)}
-                  value={formData.billing[field]}
-                  onChange={(e) =>
-                    handleAddressChange("billing", field, e.target.value)
-                  }
-                />
-              )
-            )}
+          <div
+            className="flex items-center justify-between cursor-pointer mb-4 p-4 rounded-2xl bg-white/30 backdrop-blur-sm border border-white/40 shadow-md hover:shadow-lg transition"
+            onClick={() => setShowBilling((prev) => !prev)}
+          >
+            <h2 className="text-lg font-semibold text-black">
+              Billing Address
+            </h2>
+            <span className="text-black text-xl">
+              {showBilling ? "▲" : "▼"}
+            </span>
           </div>
+          {showBilling && (
+            <>
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-1">
+                  <span className="text-blue-500 font-bold">Google</span>{" "}
+                  Billing Address Lookup
+                </label>
+                <GoogleMapsLoader>
+                  <AddressAutocomplete
+                    onAddressSelect={(parsed) => {
+                      handleAddressChange(
+                        "billing",
+                        "address1",
+                        parsed.address1
+                      );
+                      handleAddressChange("billing", "city", parsed.city);
+                      handleAddressChange("billing", "state", parsed.state);
+                      handleAddressChange("billing", "zip", parsed.zip);
+                      handleAddressChange("billing", "country", parsed.country);
+                    }}
+                  />
+                </GoogleMapsLoader>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mb-6 text-black">
+                {[
+                  "address1",
+                  "city",
+                  "address2",
+                  "state",
+                  "zip",
+                  "country",
+                ].map((field) => (
+                  <InputField
+                    key={field}
+                    label={field.charAt(0).toUpperCase() + field.slice(1)}
+                    value={formData.billing[field]}
+                    onChange={(e) =>
+                      handleAddressChange("billing", field, e.target.value)
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 

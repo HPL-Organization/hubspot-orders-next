@@ -9,6 +9,7 @@ import { toast } from "react-toastify";
 import InfoTab from "../features/info/InfoTab";
 import OrderTab from "../features/order/OrderTab";
 import FulfillmentTab from "../features/fulfillment/FulfillmentTab";
+import PaymentTab from "../features/payment/PaymentTab";
 import MainTabs from "../layouts/MainTabs";
 import OrderHeader from "../layouts/OrderHeader";
 
@@ -143,6 +144,11 @@ function App() {
     },
     ...(dealStatus === "closedWon"
       ? [
+          {
+            key: "payment",
+            label: "Payment",
+            component: <PaymentTab netsuiteInternalId={netsuiteInternalId} />,
+          },
           {
             key: "fulfillment",
             label: "Fulfillment",

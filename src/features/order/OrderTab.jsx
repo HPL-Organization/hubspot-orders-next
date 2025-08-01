@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { DataGrid } from "@mui/x-data-grid";
 import Button from "../../../components/button";
 import { useSearchParams } from "next/navigation";
@@ -61,8 +61,10 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   const defaultSalesRepId =
     repOptions.find((r) => r.email === repEmail)?.id || "-5"; // fallback
 
-  // invoices logic
-  const [invoices, setInvoices] = useState([]);
+  const memoizedProductCatalog = useMemo(
+    () => productCatalog,
+    [productCatalog]
+  );
 
   useEffect(() => {
     if (!dealId) return;
@@ -262,26 +264,6 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
     };
 
     fetchSalesTeam();
-  }, [netsuiteInternalId]);
-
-  //useffect for fetching related invoices
-  useEffect(() => {
-    if (!netsuiteInternalId) return;
-
-    const fetchInvoices = async () => {
-      try {
-        const res = await fetch(
-          `/api/netsuite/invoices?internalId=${netsuiteInternalId}`
-        );
-        const data = await res.json();
-        console.log(" Related Invoices:", data.invoices);
-        setInvoices(data.invoices || []);
-      } catch (err) {
-        console.error(" Failed to fetch related invoices:", err);
-      }
-    };
-
-    fetchInvoices();
   }, [netsuiteInternalId]);
 
   const handleSaveClick = async () => {
@@ -691,7 +673,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
               onChange={(e) => setUseMultiSalesTeam(e.target.checked)}
             />
           }
-          label="Want to add multiple sales contributions?"
+          label="Add Sales team memnbers?"
           sx={{ color: "black", mt: 1 }}
         />
       </div>
@@ -801,10 +783,10 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
       {/* Save Buttons */}
       <div className=" flex gap-1">
+        <Button onClick={handleSaveClick}>Save to Hubspot</Button>
         <Button
           disabled={creatingOrder}
           onClick={async () => {
-            handleSaveClick();
             if (!contactId || !dealId) {
               toast.error("Missing contact or deal ID.");
               return;
@@ -901,25 +883,9 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
             }
           }}
         >
-          {creatingOrder ? "Submitting..." : "Save to Netsuite and Hubspot"}
+          {creatingOrder ? "Submitting..." : "Save to Netsuite "}
         </Button>
       </div>
-
-      {/* Invoice UI */}
-      {invoices.length > 0 && (
-        <div className="mt-4">
-          <h2 className="text-xl font-semibold text-black mb-2">
-            Related Invoices
-          </h2>
-          <ul className="text-sm text-gray-800">
-            {invoices.map((invoice) => (
-              <li key={invoice.id}>
-                #{invoice.tranid} – {invoice.status ?? "-"} – ${invoice.total}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 };
