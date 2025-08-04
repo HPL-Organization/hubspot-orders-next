@@ -130,7 +130,7 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
           unitPrice: p.price ?? 0,
         }));
 
-        console.log(`✅ Background sync received ${mapped.length} products`);
+        console.log(` Background sync received ${mapped.length} products`);
         if (!cancelled) {
           setProductCatalog((prev) => {
             const existingIds = new Set(prev.map((p) => p.id));
