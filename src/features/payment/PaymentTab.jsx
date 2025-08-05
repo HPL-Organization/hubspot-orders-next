@@ -32,6 +32,27 @@ const PaymentTab = ({ netsuiteInternalId }) => {
     fetchInvoices();
   }, [netsuiteInternalId]);
 
+  if (netsuiteInternalId === undefined) {
+    return (
+      <Box display="flex" alignItems="center" gap={2}>
+        <CircularProgress size={24} />
+        <span className="text-gray-600">Loading NetSuite data...</span>
+      </Box>
+    );
+  }
+
+  // No Sales Order found (null)
+  if (netsuiteInternalId === null) {
+    return (
+      <Box display="flex" alignItems="center" gap={2}>
+        <span className="text-gray-600">
+          No associated NetSuite Sales Order.
+        </span>
+      </Box>
+    );
+  }
+
+  // Done loading invoices
   if (loading) {
     return (
       <Box display="flex" alignItems="center" gap={2}>
