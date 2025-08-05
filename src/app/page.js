@@ -15,6 +15,7 @@ import OrderHeader from "../layouts/OrderHeader";
 
 import { getSalesOrderNumberFromDeal } from "../../lib/HubSpot";
 import { RepProvider, useRep } from "../../components/RepContext";
+import GoogleMapsWrapper from "../../components/GoogleMapsWrapper";
 
 function App() {
   const [repOptions, setRepOptions] = useState([]);
@@ -174,10 +175,12 @@ function App() {
 
 export default function Page() {
   return (
-    <RepProvider>
-      <Suspense fallback={<div>Loading...</div>}>
-        <App />
-      </Suspense>
-    </RepProvider>
+    <GoogleMapsWrapper>
+      <RepProvider>
+        <Suspense fallback={<div className=" text-black">Loading...</div>}>
+          <App />
+        </Suspense>
+      </RepProvider>
+    </GoogleMapsWrapper>
   );
 }

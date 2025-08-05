@@ -783,7 +783,10 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
       {/* Save Buttons */}
       <div className=" flex gap-1">
-        <Button onClick={handleSaveClick} className="bg-[#FF7A59]!">
+        <Button
+          onClick={handleSaveClick}
+          className="bg-[#FF7A59]! hover:bg-[#e76445]!"
+        >
           Save to Hubspot
         </Button>
         <Button

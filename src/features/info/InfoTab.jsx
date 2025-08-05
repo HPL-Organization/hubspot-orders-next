@@ -316,7 +316,7 @@ const InfoTab = () => {
       <div className="flex justify-end mb-2">
         <Button
           onClick={handleSaveHubSpot}
-          className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]!"
+          className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]! hover:bg-[#e76445]!"
         >
           Save to HubSpot
         </Button>
@@ -482,7 +482,7 @@ const InfoTab = () => {
       <div className="flex justify-end mb-2">
         <Button
           onClick={handleSaveHubSpot}
-          className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]!"
+          className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]! hover:bg-[#e76445]!"
         >
           Save to HubSpot
         </Button>
@@ -494,13 +494,14 @@ const InfoTab = () => {
   );
 };
 
-const WrappedInfoTab = () => (
-  <LoadScript
-    googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-    libraries={["places"]}
-  >
-    <InfoTab />
-  </LoadScript>
-);
+// const WrappedInfoTab = () => (
+//   <LoadScript
+//     googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+//     libraries={["places"]}
+//   >
+//     <InfoTab />
+//   </LoadScript>
+// );
 
-export default WrappedInfoTab;
+// export default WrappedInfoTab;
+export default InfoTab;
