@@ -20,7 +20,7 @@ import { useRep } from "../../../components/RepContext";
 
 const OrderTab = ({ netsuiteInternalId, repOptions }) => {
   //make sure we have netsuite sales order internal id loaded-
-  if (!netsuiteInternalId) {
+  if (netsuiteInternalId === undefined) {
     return (
       <div className="p-8 max-w-6xl mx-auto">
         <Box display="flex" alignItems="center" gap={2}>
@@ -783,13 +783,27 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
       {/* Save Buttons */}
       <div className=" flex gap-1">
-        <Button onClick={handleSaveClick}>Save to Hubspot</Button>
+        <Button onClick={handleSaveClick} className="bg-[#FF7A59]!">
+          Save to Hubspot
+        </Button>
         <Button
           disabled={creatingOrder}
           onClick={async () => {
             if (!contactId || !dealId) {
               toast.error("Missing contact or deal ID.");
               return;
+            }
+            if (netsuiteInternalId === undefined) {
+              toast.error(
+                "Please wait until NetSuite data has finished loading."
+              );
+              return;
+            }
+            if (netsuiteInternalId === null) {
+              const confirmCreate = window.confirm(
+                "No NetSuite Sales Order exists yet. Do you want to create a new one?"
+              );
+              if (!confirmCreate) return;
             }
 
             const totalContribution = salesTeam.reduce(

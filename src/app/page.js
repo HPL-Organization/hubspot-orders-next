@@ -20,7 +20,7 @@ function App() {
   const [repOptions, setRepOptions] = useState([]);
   const [selectedRepEmail, setSelectedRepEmail] = useState("");
   const [netsuiteTranId, setNetsuiteTranId] = useState(null);
-  const [netsuiteInternalId, setNetsuiteInternalId] = useState(null);
+  const [netsuiteInternalId, setNetsuiteInternalId] = useState(undefined);
 
   const searchParams = useSearchParams();
   const dealIdURL = searchParams.get("dealId");
@@ -81,7 +81,7 @@ function App() {
         const intIdRes = await fetch(`/api/so-int-id?dealId=${dealIdURL}`);
         const { internalId } = await intIdRes.json();
         console.log(" Loaded internal NetSuite ID from API route:", internalId);
-        await setNetsuiteInternalId(internalId);
+        await setNetsuiteInternalId(internalId ?? null);
       } catch (err) {
         console.error(" Failed to fetch sales order info:", err.message);
       }

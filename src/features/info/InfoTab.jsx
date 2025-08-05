@@ -123,6 +123,106 @@ const InfoTab = () => {
     });
   };
 
+  //save to hubspot
+  const handleSaveHubSpot = async () => {
+    if (!contactId) {
+      toast.error("Contact ID not available.");
+      return;
+    }
+
+    const updatePayload = {
+      contactId,
+      update: {
+        firstname: formData.firstName,
+        middle_name: formData.middleName,
+        lastname: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        mobilephone: formData.mobile,
+        shipping_address: formData.shipping.address1,
+        shipping_address_line_2: formData.shipping.address2,
+        shipping_city: formData.shipping.city,
+        shipping_state_region: formData.shipping.state,
+        shipping_postalcode: formData.shipping.zip,
+        shipping_country_region: formData.shipping.country,
+        address: formData.billing.address1,
+        address_line_2: formData.billing.address2,
+        city: formData.billing.city,
+        state: formData.billing.state,
+        zip: formData.billing.zip,
+        country: formData.billing.country,
+      },
+    };
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatePayload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error || "Failed to update contact in HubSpot.");
+        return;
+      }
+
+      toast.success("Contact saved in HubSpot");
+    } catch (error) {
+      console.error("HubSpot Save Error", error);
+      toast.error("Something went wrong while saving to HubSpot.");
+    }
+  };
+
+  //save to netsuite
+  const handleSaveNetSuite = async () => {
+    if (!contactId) {
+      toast.error("Contact ID not available.");
+      return;
+    }
+
+    const netsuitePayload = {
+      id: contactId,
+      firstName: formData.firstName,
+      middleName: formData.middleName,
+      lastName: formData.lastName,
+      email: formData.email,
+      phone: formData.phone,
+      mobile: formData.mobile,
+      billingAddress1: formData.billing.address1,
+      billingAddress2: formData.billing.address2,
+      billingCity: formData.billing.city,
+      billingState: formData.billing.state,
+      billingZip: formData.billing.zip,
+      billingCountry: formData.billing.country,
+      shippingAddress1: formData.shipping.address1,
+      shippingAddress2: formData.shipping.address2,
+      shippingCity: formData.shipping.city,
+      shippingState: formData.shipping.state,
+      shippingZip: formData.shipping.zip,
+      shippingCountry: formData.shipping.country,
+    };
+
+    try {
+      const netsuiteRes = await fetch("/api/netsuite/createcustomer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(netsuitePayload),
+      });
+
+      if (!netsuiteRes.ok) {
+        const err = await netsuiteRes.json();
+        toast.error("NetSuite failed: " + err.error);
+        return;
+      }
+
+      toast.success("Contact sent to NetSuite!");
+    } catch (error) {
+      console.error("NetSuite Save Error", error);
+      toast.error("Something went wrong while saving to NetSuite.");
+    }
+  };
+
   const handleSave = async () => {
     if (!contactId) {
       toast.error("Contact ID not available.");
@@ -213,8 +313,16 @@ const InfoTab = () => {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 text-black">Info</h1>
-      <div className="flex justify-end">
-        <Button onClick={handleSave}>Save</Button>
+      <div className="flex justify-end mb-2">
+        <Button
+          onClick={handleSaveHubSpot}
+          className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]!"
+        >
+          Save to HubSpot
+        </Button>
+        <Button onClick={handleSaveNetSuite} className="mr-4 px-3 py-1 text-sm">
+          Save to NetSuite
+        </Button>
       </div>
       <div className="grid grid-cols-3 gap-4 mb-8 text-black">
         <InputField
@@ -371,8 +479,16 @@ const InfoTab = () => {
         </>
       )}
 
-      <div className="flex justify-end">
-        <Button onClick={handleSave}>Save</Button>
+      <div className="flex justify-end mb-2">
+        <Button
+          onClick={handleSaveHubSpot}
+          className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]!"
+        >
+          Save to HubSpot
+        </Button>
+        <Button onClick={handleSaveNetSuite} className="mr-4 px-3 py-1 text-sm">
+          Save to NetSuite
+        </Button>
       </div>
     </div>
   );
