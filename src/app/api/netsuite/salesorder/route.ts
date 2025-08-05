@@ -3,7 +3,7 @@ import { createNetsuiteSalesOrder } from "../../../../../lib/netsuite/createNets
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    console.log("🔍 Incoming body:", body);
+    console.log(" Incoming body:", body);
 
     const {
       hubspotSoId,
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     );
     return new Response(JSON.stringify(result), { status: 200 });
   } catch (err: any) {
-    console.error("❌ Route error:", err);
+    console.error(" Route error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
     });

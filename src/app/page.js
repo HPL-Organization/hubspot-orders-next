@@ -28,10 +28,13 @@ function App() {
 
   const { setRepEmail } = useRep();
 
+  const [netsuiteStatus, setNetsuiteStatus] = useState("loading");
+  const [fulfillmentStatus, setFulfillmentStatus] = useState("loading");
+
   const orderData = {
     orderNumber: netsuiteTranId || "No associated sales order",
-    paymentStatus: "Pending",
-    fulfillmentStatus: "Not Started",
+    paymentStatus: netsuiteStatus || "—",
+    fulfillmentStatus: fulfillmentStatus || "Not Started",
     rep: selectedRepEmail, // use email for selection
   };
   useEffect(() => {
@@ -129,6 +132,83 @@ function App() {
     }
   };
 
+  //calculate payment status
+  useEffect(() => {
+    if (!netsuiteInternalId) return;
+
+    const fetchInvoiceStatus = async () => {
+      try {
+        const res = await fetch(
+          `/api/netsuite/invoices?internalId=${netsuiteInternalId}`
+        );
+        const data = await res.json();
+
+        const invoices = data.invoices || [];
+        console.log("Invoice status getter ", data);
+
+        if (invoices.length === 0) {
+          setNetsuiteStatus("Not Paid");
+          return;
+        }
+
+        const allPaid = invoices.every(
+          (inv) => Number(inv.amountRemaining) === 0
+        );
+        const anyPaid = invoices.some((inv) => Number(inv.amountPaid) > 0);
+        const anyUnpaid = invoices.some(
+          (inv) => Number(inv.amountRemaining) > 0
+        );
+
+        if (allPaid) {
+          setNetsuiteStatus("Paid");
+        } else if (anyPaid && anyUnpaid) {
+          setNetsuiteStatus("Partially Paid");
+        } else {
+          setNetsuiteStatus("Not Paid");
+        }
+      } catch (err) {
+        console.error("Failed to compute invoice payment status:", err);
+      }
+    };
+
+    fetchInvoiceStatus();
+  }, [netsuiteInternalId]);
+
+  //fulfillment status useffect
+  useEffect(() => {
+    if (!netsuiteInternalId) return;
+
+    const computeFulfillmentStatus = async () => {
+      try {
+        const res = await fetch(
+          `/api/netsuite/fulfillment-status-line-items?internalId=${netsuiteInternalId}`
+        );
+        const data = await res.json();
+        const ordered = data.orderedLineIds || [];
+        const fulfilled = new Set(data.fulfilledLineIds || []);
+
+        if (ordered.length === 0) {
+          setFulfillmentStatus("Not Fulfilled");
+          return;
+        }
+
+        const fulfilledCount = ordered.filter((id) => fulfilled.has(id)).length;
+
+        if (fulfilledCount === 0) {
+          setFulfillmentStatus("Not Fulfilled");
+        } else if (fulfilledCount < ordered.length) {
+          setFulfillmentStatus("Partially Fulfilled");
+        } else {
+          setFulfillmentStatus("Fulfilled");
+        }
+      } catch (err) {
+        console.error("Error computing fulfillment status:", err);
+      }
+    };
+
+    computeFulfillmentStatus();
+  }, [netsuiteInternalId]);
+
   const dealStatus = "closedWon";
   console.log("**", netsuiteInternalId);
   const tabs = [
@@ -140,6 +220,8 @@ function App() {
         <OrderTab
           netsuiteInternalId={netsuiteInternalId}
           repOptions={repOptions}
+          setNetsuiteTranId={setNetsuiteTranId}
+          setNetsuiteInternalId={setNetsuiteInternalId}
         />
       ),
     },

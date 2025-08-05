@@ -18,7 +18,12 @@ import ListboxComponent from "../../../components/ListBoxComponent";
 import { Checkbox, FormControlLabel } from "@mui/material";
 import { useRep } from "../../../components/RepContext";
 
-const OrderTab = ({ netsuiteInternalId, repOptions }) => {
+const OrderTab = ({
+  netsuiteInternalId,
+  repOptions,
+  setNetsuiteTranId,
+  setNetsuiteInternalId,
+}) => {
   //make sure we have netsuite sales order internal id loaded-
   if (netsuiteInternalId === undefined) {
     return (
@@ -892,6 +897,15 @@ const OrderTab = ({ netsuiteInternalId, repOptions }) => {
 
               console.log(" Sales Order created:", data);
               toast.success(" Sales Order submitted to NetSuite.");
+              if (data?.id) {
+                console.log(data.id);
+                setNetsuiteInternalId(data.id);
+              }
+
+              if (data?.netsuiteTranId) {
+                console.log(data.netsuiteTranId);
+                setNetsuiteTranId(data.netsuiteTranId);
+              }
             } catch (err) {
               console.error(" Sales Order creation failed:", err);
               toast.error(" Failed to submit Sales Order.");
