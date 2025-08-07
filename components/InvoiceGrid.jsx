@@ -1,26 +1,24 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { DataGrid } from "@mui/x-data-grid";
-import { Box } from "@mui/material";
+import { Box, Button, Collapse } from "@mui/material";
+import { ExpandLess, ExpandMore } from "@mui/icons-material";
 
 const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
+  const [openPayments, setOpenPayments] = useState({}); // Track which invoices are expanded
+
+  const togglePayments = (invoiceId) => {
+    setOpenPayments((prev) => ({
+      ...prev,
+      [invoiceId]: !prev[invoiceId],
+    }));
+  };
+
   const columns = [
     { field: "invoiceNumber", headerName: "Invoice #", flex: 1 },
-    {
-      field: "itemId",
-      headerName: "Item ID",
-      flex: 1,
-    },
-    {
-      field: "itemName",
-      headerName: "SKU",
-      flex: 2,
-    },
-    {
-      field: "quantity",
-      headerName: "Qty",
-      flex: 1,
-    },
+    { field: "itemId", headerName: "Item ID", flex: 1 },
+    { field: "itemName", headerName: "SKU", flex: 2 },
+    { field: "quantity", headerName: "Qty", flex: 1 },
     {
       field: "rate",
       headerName: "Rate",
@@ -35,7 +33,6 @@ const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
     },
   ];
 
-  // Filter out duplicate invoiceIds
   const uniqueInvoicesMap = new Map();
   invoices.forEach((inv) => {
     if (!uniqueInvoicesMap.has(inv.invoiceId)) {
@@ -43,20 +40,6 @@ const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
     }
   });
   const uniqueInvoices = Array.from(uniqueInvoicesMap.values());
-
-  //  Flatten invoice -> lines
-  const rows = [];
-  let uniqueId = 0;
-
-  uniqueInvoices.forEach((invoice) => {
-    invoice.lines.forEach((line) => {
-      rows.push({
-        id: `inv-${uniqueId++}`,
-        invoiceNumber: invoice.tranId,
-        ...line,
-      });
-    });
-  });
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -121,7 +104,70 @@ const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
                 Remaining:{" "}
                 <strong>${Number(inv.amountRemaining || 0).toFixed(2)}</strong>
               </Box>
+              {inv.payments?.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => togglePayments(inv.invoiceId)}
+                    endIcon={
+                      openPayments[inv.invoiceId] ? (
+                        <ExpandLess />
+                      ) : (
+                        <ExpandMore />
+                      )
+                    }
+                  >
+                    {openPayments[inv.invoiceId]
+                      ? "Hide Related Payments"
+                      : "Show Related Payments"}
+                  </Button>
+                </Box>
+              )}
             </Box>
+
+            {inv.payments?.length > 0 && (
+              <Collapse
+                in={openPayments[inv.invoiceId]}
+                timeout="auto"
+                unmountOnExit
+              >
+                <Box mt={2}>
+                  <Box
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: "0.95rem",
+                      color: "#333",
+                      mb: 1,
+                    }}
+                  >
+                    Related Payments
+                  </Box>
+                  <table className="w-full text-sm text-gray-800 border">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-2 border text-left">Date</th>
+                        <th className="p-2 border text-left">Payment #</th>
+                        <th className="p-2 border text-left">Amount</th>
+                        <th className="p-2 border text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inv.payments.map((p) => (
+                        <tr key={p.paymentId}>
+                          <td className="p-2 border">{p.paymentDate}</td>
+                          <td className="p-2 border">{p.tranId}</td>
+                          <td className="p-2 border">
+                            ${Number(p.amount).toFixed(2)}
+                          </td>
+                          <td className="p-2 border">{p.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Box>
+              </Collapse>
+            )}
           </Box>
         );
       })}

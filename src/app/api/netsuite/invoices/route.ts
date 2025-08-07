@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const token = await getValidToken();
+    //console.log(token);
 
     // Step 1: Get invoice internal IDs linked to the Sales Order
     const suiteQL = `
@@ -42,7 +43,6 @@ export async function GET(req: NextRequest) {
 
     // Step 2: Fetch each invoice using REST Record API with expandSubResources=true
     const invoices = [];
-
     for (const id of invoiceIds) {
       const invoiceResp = await axios.get(
         `${BASE_URL}/record/v1/invoice/${id}?expandSubResources=true`,
@@ -55,6 +55,44 @@ export async function GET(req: NextRequest) {
       );
 
       const data = invoiceResp.data;
+
+      // Step 2a: Get related customer payments using TransactionLine.CreatedFrom
+      const paymentsSuiteQL = `
+ SELECT
+  T.id AS paymentId,
+  T.tranid AS tranId,
+  T.trandate AS paymentDate,
+  BUILTIN.DF(T.status) AS status,
+  T.total AS amount
+FROM transaction T
+INNER JOIN transactionline TL
+  ON TL.transaction = T.id
+  AND TL.createdfrom = ${data.id}
+WHERE T.type = 'CustPymt'
+`;
+
+      const paymentsResp = await axios.post(
+        `${BASE_URL}/query/v1/suiteql`,
+        { q: paymentsSuiteQL },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Prefer: "transient",
+          },
+        }
+      );
+
+      const payments =
+        paymentsResp.data.items?.map((p: any) => ({
+          paymentId: p.paymentid,
+          tranId: p.tranid,
+          paymentDate: p.paymentdate,
+          amount: p.amount,
+          status: p.status,
+        })) || [];
+      console.log(" Raw SuiteQL payments:", paymentsResp.data.items);
 
       const lines =
         data.item?.items?.map((line: any) => ({
@@ -73,6 +111,7 @@ export async function GET(req: NextRequest) {
         amountPaid: data.amountPaid,
         amountRemaining: data.amountRemaining,
         lines,
+        payments,
       });
     }
 
