@@ -810,7 +810,7 @@ const OrderTab = ({
             }
             if (netsuiteInternalId === null) {
               const confirmCreate = await confirmToast(
-                "No NetSuite Sales Order exists yet. Do you want to create a new one?"
+                "No NetSuite Sales Order exists yet. Have you checked the contact info is updated?"
               );
               if (!confirmCreate) return;
             }
