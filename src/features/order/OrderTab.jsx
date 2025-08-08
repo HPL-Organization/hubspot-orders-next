@@ -915,7 +915,7 @@ const OrderTab = ({
             }
           }}
         >
-          {creatingOrder ? "Submitting..." : "Save to Netsuite "}
+          {creatingOrder ? "Submitting..." : "Mark Closed, send to Netsuite "}
         </Button>
       </div>
     </div>
