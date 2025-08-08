@@ -17,6 +17,7 @@ import {
 import ListboxComponent from "../../../components/ListBoxComponent";
 import { Checkbox, FormControlLabel } from "@mui/material";
 import { useRep } from "../../../components/RepContext";
+import { confirmToast } from "../../../components/Toast/ConfirmToast";
 
 const OrderTab = ({
   netsuiteInternalId,
@@ -808,7 +809,7 @@ const OrderTab = ({
               return;
             }
             if (netsuiteInternalId === null) {
-              const confirmCreate = window.confirm(
+              const confirmCreate = await confirmToast(
                 "No NetSuite Sales Order exists yet. Do you want to create a new one?"
               );
               if (!confirmCreate) return;
