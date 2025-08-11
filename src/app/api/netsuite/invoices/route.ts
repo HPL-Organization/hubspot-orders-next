@@ -110,6 +110,7 @@ WHERE T.type = 'CustPymt'
         total: data.total,
         amountPaid: data.amountPaid,
         amountRemaining: data.amountRemaining,
+        customerId: data.entity.id,
         lines,
         payments,
       });

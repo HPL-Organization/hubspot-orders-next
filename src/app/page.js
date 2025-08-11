@@ -212,7 +212,11 @@ function App() {
   const dealStatus = "closedWon";
   console.log("**", netsuiteInternalId);
   const tabs = [
-    { key: "info", label: "Info", component: <InfoTab /> },
+    {
+      key: "info",
+      label: "Info",
+      component: <InfoTab netsuiteInternalId={netsuiteInternalId} />,
+    },
     {
       key: "order",
       label: dealStatus === "closedWon" ? "Order" : "Quote",

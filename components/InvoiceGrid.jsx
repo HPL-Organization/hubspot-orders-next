@@ -1,8 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { DataGrid } from "@mui/x-data-grid";
 import { Box, Button, Collapse } from "@mui/material";
-import { ExpandLess, ExpandMore } from "@mui/icons-material";
 
 const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
   const [openPayments, setOpenPayments] = useState({}); // Track which invoices are expanded
@@ -40,6 +39,91 @@ const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
     }
   });
   const uniqueInvoices = Array.from(uniqueInvoicesMap.values());
+  const [showAddUI, setShowAddUI] = useState({});
+  const clientRefs = useRef({});
+
+  //versapy
+  const handleAddPaymentMethod = async (invoiceId, inv) => {
+    try {
+      // Show the UI block
+      setShowAddUI((prev) => ({ ...prev, [invoiceId]: true }));
+
+      const res = await fetch("/api/versapay/create-session", {
+        method: "POST",
+      });
+      const { sessionId } = await res.json();
+      console.log("Session id", sessionId);
+      if (typeof versapay === "undefined") {
+        console.error("Versapay SDK not loaded.");
+        return;
+      }
+
+      // Mount target
+      const container = document.querySelector(`#vp-container-${invoiceId}`);
+      if (!container) {
+        console.error("No container found for invoice:", invoiceId);
+        return;
+      }
+
+      // Prevent duplicate mounts in dev/StrictMode
+      if (clientRefs.current[invoiceId]) {
+        // already initialized once for this invoice
+        return;
+      }
+
+      // Clear any previous inner content to avoid removeChild errors
+      container.innerHTML = "";
+      // Initialize the client and mount the iframe
+      const _client = versapay.initClient(sessionId, {}, []);
+      console.log("Versapay Client initialized:", _client);
+      const client =
+        typeof _client?.then === "function" ? await _client : _client;
+      clientRefs.current[invoiceId] = client;
+
+      const frameReady = client.initFrame(container, "358px", "500px");
+      console.log("Versapay iframe successfully initialized.", frameReady);
+      console.log();
+      client.onApproval(
+        async (result) => {
+          console.log("Token received:", result);
+
+          const token = result.token;
+          const customerId = inv.customerId;
+
+          const response = await fetch("/api/netsuite/save-payment-method", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              customerInternalId: customerId,
+              token,
+            }),
+          });
+
+          if (response.ok) {
+            console.log("Payment method saved successfully.");
+          } else {
+            console.error("Failed to save payment method.");
+          }
+        },
+        (error) => {
+          console.error("Payment rejected:", error?.error || error);
+        }
+      );
+
+      frameReady.then(() => {
+        // Enable the save button
+        const saveBtn = document.querySelector(`#vp-save-${invoiceId}`);
+        saveBtn?.removeAttribute("disabled");
+      });
+    } catch (err) {
+      console.error(
+        "Failed to create Versapay session:",
+        err.response?.data || err
+      );
+    }
+  };
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -104,23 +188,80 @@ const InvoiceGrid = ({ invoices, productCatalog = [] }) => {
                 Remaining:{" "}
                 <strong>${Number(inv.amountRemaining || 0).toFixed(2)}</strong>
               </Box>
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => handleAddPaymentMethod(inv.invoiceId, inv)}
+                >
+                  + Add Payment Method
+                </Button>
+              </Box>
+              <form
+                id={`vp-form-${inv.invoiceId}`}
+                style={{ display: showAddUI[inv.invoiceId] ? "block" : "none" }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const c = clientRefs.current[inv.invoiceId];
+                  if (!c) {
+                    console.error("Versapay client not ready");
+                    return;
+                  }
+                  const p = c.submitEvents();
+                  if (p && typeof p.then === "function") {
+                    p.catch((err) => console.error("submitEvents error:", err));
+                  }
+                }}
+              >
+                <div
+                  id={`vp-container-${inv.invoiceId}`}
+                  style={{
+                    height: "358px",
+                    width: "100%",
+                    maxWidth: "500px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    padding: "8px",
+                    background: "#fafafa",
+                  }}
+                ></div>
+
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    id={`vp-save-${inv.invoiceId}`}
+                    disabled
+                    type="submit" // 👈 submit the form
+                    onClick={() => {
+                      // also trigger programmatically in case the SDK ignores submit type
+                      const c = clientRefs.current[inv.invoiceId];
+                      c?.submitEvents();
+                    }}
+                    style={{
+                      height: "36px",
+                      padding: "0 14px",
+                      backgroundColor: "#1976d2",
+                      color: "#fff",
+                      fontSize: "14px",
+                      borderRadius: "6px",
+                      border: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Save Payment Method
+                  </button>
+                </div>
+              </form>
+
               {inv.payments?.length > 0 && (
                 <Box sx={{ mt: 2 }}>
                   <Button
                     size="small"
                     variant="outlined"
                     onClick={() => togglePayments(inv.invoiceId)}
-                    endIcon={
-                      openPayments[inv.invoiceId] ? (
-                        <ExpandLess />
-                      ) : (
-                        <ExpandMore />
-                      )
-                    }
                   >
                     {openPayments[inv.invoiceId]
-                      ? "Hide Related Payments"
-                      : "Show Related Payments"}
+                      ? "Hide Related Payments ▲"
+                      : "Show Related Payments ▼"}
                   </Button>
                 </Box>
               )}

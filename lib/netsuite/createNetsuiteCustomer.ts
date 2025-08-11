@@ -356,6 +356,7 @@ export async function createNetsuiteCustomer(customer: any) {
         },
       ],
     },
+    shippingcarrier: (customer.shippingcarrier || "").toLowerCase(),
   };
 
   if (existingId) {

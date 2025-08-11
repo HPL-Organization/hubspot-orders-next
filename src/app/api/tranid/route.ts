@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const tranid = await getSalesOrderNumberFromDeal(dealId);
     return new Response(JSON.stringify({ tranid }), { status: 200 });
   } catch (err) {
-    console.error("❌ Error in /api/tranid:", err);
+    console.error(" Error in /api/tranid:", err);
     return new Response(JSON.stringify({ error: "Failed to fetch tranId" }), {
       status: 500,
     });

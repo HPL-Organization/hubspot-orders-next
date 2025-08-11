@@ -123,6 +123,7 @@ function buildBasePayload(
         item: { id: item.itemId },
         quantity: item.quantity,
         rate: item.unitPrice * (1 - item.unitDiscount / 100),
+        custcolns_comment: item.comment || "",
       })),
     },
   };
@@ -177,6 +178,7 @@ function buildPatchLines(lineItems, existingLineMap, fulfilledLines) {
             item: { id: item.itemId },
             quantity: item.quantity,
             rate: item.unitPrice * (1 - item.unitDiscount / 100),
+            custcolns_comment: item.comment,
           };
 
       const lineIdList = existingLineMap[item.itemId];

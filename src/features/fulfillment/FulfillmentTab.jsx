@@ -28,41 +28,6 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // const fulfillments = [
-  //   {
-  //     id: 1,
-  //     number: "Fulfillment #1",
-  //     shippedAt: "2025-06-21",
-  //     items: [
-  //       {
-  //         sku: "10001",
-  //         productName: "Product Name",
-  //         quantity: 1,
-  //         tracking: "1Z9999TRACK",
-  //       },
-  //       {
-  //         sku: "20075",
-  //         productName: "Model 10",
-  //         quantity: 5,
-  //         tracking: "1Z8888TRACK",
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: 2,
-  //     number: "Fulfillment #2",
-  //     shippedAt: "2025-06-18",
-  //     items: [
-  //       {
-  //         sku: "30001",
-  //         productName: "Another Product",
-  //         quantity: 2,
-  //         tracking: "1Z8888TRACK",
-  //       },
-  //     ],
-  //   },
-  // ];
-
   // Formats YYYY-MM-DD into localized format
   const formatDate = (isoDate) => {
     if (!isoDate) return "";
@@ -72,6 +37,16 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
       month: "2-digit",
       day: "2-digit",
     }).format(date);
+  };
+
+  const handleTrackingNumberDisplay = (tracking) => {
+    if (!tracking) return "—";
+
+    // Split the tracking numbers by comma, remove duplicates, and join back with comma
+    const uniqueTrackingNumbers = Array.from(
+      new Set(tracking.split(",").map((num) => num.trim()))
+    );
+    return uniqueTrackingNumbers.join(", ") || "-";
   };
 
   useEffect(() => {
@@ -84,10 +59,10 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
           `/api/fulfillments?internalId=${netsuiteInternalId}`
         );
         const data = await res.json();
-        console.log("📦 Fulfillments response from API:", data);
+        console.log(" Fulfillments response from API:", data);
         setFulfillments(data.fulfillments || []);
         console.log(
-          "🔍 Parsed fulfillments:",
+          " Parsed fulfillments:",
           JSON.stringify(data.fulfillments, null, 2)
         );
         console.log("Rendering items:", fulfillment.items);
@@ -176,7 +151,9 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
                             <TableCell>{item.sku || "—"}</TableCell>
                             <TableCell>{item.productName || "—"}</TableCell>
                             <TableCell>{item.quantity || "—"}</TableCell>
-                            <TableCell>{item.tracking || "—"}</TableCell>
+                            <TableCell>
+                              {handleTrackingNumberDisplay(item.tracking)}
+                            </TableCell>
                           </TableRow>
                         ))
                       ) : (

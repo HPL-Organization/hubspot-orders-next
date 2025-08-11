@@ -326,6 +326,16 @@ const OrderTab = ({
       toast.error("Failed to save line items.");
     }
   };
+  const uniqueProducts = useMemo(() => {
+    const seen = new Set();
+    return productCatalog.filter((product) => {
+      if (seen.has(product.id)) {
+        return false; // Skip duplicate products based on SKU
+      }
+      seen.add(product.id);
+      return true;
+    });
+  }, [productCatalog]);
 
   const columns = [
     { field: "sku", headerName: "SKU", flex: 1, editable: true },
@@ -556,7 +566,7 @@ const OrderTab = ({
         ) : (
           <Autocomplete
             multiple
-            options={productCatalog}
+            options={uniqueProducts}
             value={selectedProducts}
             onChange={(e, newValue) => setSelectedProducts(newValue)}
             getOptionLabel={(option) => `${option.sku} - ${option.name}`}
@@ -846,6 +856,7 @@ const OrderTab = ({
                 unitPrice: Number(row.unitPrice) || 0,
                 unitDiscount: Number(row.unitDiscount) || 0,
                 isClosed: row.isClosed === true,
+                comment: row.comment || "",
               }));
 
               console.log("Line items to netsuite", lineItems);

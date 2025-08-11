@@ -7,12 +7,11 @@ import { toast } from "react-toastify"; //  import toast
 
 import GoogleMapsLoader from "../../../components/GoogleMapsLoader";
 import AddressAutocomplete from "../../../components/AddressAutocomplete";
-import { LoadScript } from "@react-google-maps/api";
 
-const InfoTab = () => {
+const InfoTab = ({ netsuiteInternalId }) => {
   const searchParams = useSearchParams();
   const dealId = searchParams.get("dealId");
-
+  console.log("Ns id", netsuiteInternalId);
   const [contactId, setContactId] = useState(null);
   const [prevBilling, setPrevBilling] = useState(null);
   const [formData, setFormData] = useState({
@@ -43,6 +42,7 @@ const InfoTab = () => {
 
   const [showShipping, setShowShipping] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
+  const [shippingMethodOptions, setShippingMethodOptions] = useState([]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -81,7 +81,10 @@ const InfoTab = () => {
             zip: data.properties.zip || "",
             country: data.properties.country || "",
           },
+          requiredShippingMethod:
+            data.properties.required_shipping_method || "",
         }));
+        console.log("Shipping Method", data.properties);
       } catch (err) {
         toast.error("Failed to fetch contact.");
         console.error("Failed to fetch contact", err);
@@ -90,6 +93,24 @@ const InfoTab = () => {
 
     fetchContact();
   }, [dealId]);
+
+  //useffect to get shipping method options
+  useEffect(() => {
+    const fetchShippingOptions = async () => {
+      try {
+        const res = await fetch("/api/shipping-method-options");
+        const data = await res.json();
+        if (data.options) {
+          setShippingMethodOptions(data.options);
+        }
+      } catch (error) {
+        console.error("Error fetching shipping method options", error);
+        toast.error("Failed to fetch shipping method options.");
+      }
+    };
+
+    fetchShippingOptions();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -151,6 +172,7 @@ const InfoTab = () => {
         state: formData.billing.state,
         zip: formData.billing.zip,
         country: formData.billing.country,
+        required_shipping_method: formData.requiredShippingMethod,
       },
     };
 
@@ -201,7 +223,9 @@ const InfoTab = () => {
       shippingState: formData.shipping.state,
       shippingZip: formData.shipping.zip,
       shippingCountry: formData.shipping.country,
+      shippingcarrier: formData.requiredShippingMethod,
     };
+    console.log("netsuite", netsuitePayload);
 
     try {
       const netsuiteRes = await fetch("/api/netsuite/createcustomer", {
@@ -213,6 +237,43 @@ const InfoTab = () => {
       if (!netsuiteRes.ok) {
         const err = await netsuiteRes.json();
         toast.error("NetSuite failed: " + err.error);
+        return;
+      }
+      const getdata = await fetch(
+        `/api/netsuite/update-ship-method?netsuiteInternalId=${netsuiteInternalId}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      if (!getdata.ok) {
+        const err = await getdata.json();
+        toast.error(
+          "Failed to fetch sales order data in NetSuite: " + err.error
+        );
+        return;
+      }
+
+      const data = await getdata.json();
+      console.log("Sales Order Data:", data);
+      const updateShipMethodRes = await fetch(
+        "/api/netsuite/update-ship-method",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            netsuiteInternalId,
+            shippingMethod: formData.requiredShippingMethod,
+          }),
+        }
+      );
+
+      if (!updateShipMethodRes.ok) {
+        const err = await updateShipMethodRes.json();
+        toast.error(
+          "Failed to update shipping method in NetSuite: " + err.error
+        );
         return;
       }
 
@@ -361,6 +422,26 @@ const InfoTab = () => {
           value={formData.mobile}
           onChange={handleChange}
         />
+      </div>
+      <div className="mb-4">
+        <label className="text-lg font-semibold text-black">
+          Required Shipping Method
+        </label>
+        <select
+          name="requiredShippingMethod"
+          value={formData.requiredShippingMethod}
+          onChange={handleChange}
+          className="block w-full mt-2 p-2 border border-gray-300 rounded-md text-black"
+        >
+          <option value="">
+            <span className=" text-black">Select a shipping method</span>
+          </option>
+          {shippingMethodOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              <span className=" text-black">{option.label}</span>
+            </option>
+          ))}
+        </select>
       </div>
 
       <div
