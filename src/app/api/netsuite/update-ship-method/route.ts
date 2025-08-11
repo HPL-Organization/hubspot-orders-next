@@ -17,20 +17,13 @@ export async function PATCH(req) {
   const accessToken = await getValidToken();
 
   try {
-    // Log the netsuiteInternalId for debugging
-    console.log("Using netsuiteInternalId:", netsuiteInternalId);
-
-    // Construct the SuiteQL query
     const suiteQLQuery = `
       SELECT id, shipcarrier
-      FROM salesorder
+      FROM transaction
       WHERE id = ${netsuiteInternalId}
+        AND type = 'SalesOrd'
     `;
 
-    // Log the query for debugging purposes
-    console.log("SuiteQL Query:", suiteQLQuery);
-
-    // Send SuiteQL query to fetch the sales order details
     const queryRes = await axios.post(
       `${BASE_URL}/query/v1/suiteql`,
       { q: suiteQLQuery },
@@ -61,16 +54,15 @@ export async function PATCH(req) {
       },
     };
 
-    // Use REST API to update the Sales Order (Do not use SuiteQL for updates)
     const updateRes = await axios.patch(
-      `${BASE_URL}/record/v1/salesOrder/${netsuiteInternalId}`, // Correct REST API URL
+      `${BASE_URL}/record/v1/salesOrder/${netsuiteInternalId}`,
       payload,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/json",
           "Content-Type": "application/json",
-          Prefer: "transient", // Adding the missing Prefer header
+          Prefer: "transient",
         },
       }
     );
@@ -105,7 +97,6 @@ export async function GET(req) {
   const accessToken = await getValidToken();
 
   try {
-    // Fetching the Sales Order
     const res = await axios.get(
       `${BASE_URL}/record/v1/salesOrder/${netsuiteInternalId}`,
       {
@@ -116,7 +107,6 @@ export async function GET(req) {
       }
     );
 
-    // Log the response to inspect the structure
     console.log("Sales Order Structure:", JSON.stringify(res.data, null, 2));
 
     if (!res.data) {
