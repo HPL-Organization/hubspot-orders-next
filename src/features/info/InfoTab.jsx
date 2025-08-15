@@ -239,43 +239,43 @@ const InfoTab = ({ netsuiteInternalId }) => {
         toast.error("NetSuite failed: " + err.error);
         return;
       }
-      const getdata = await fetch(
-        `/api/netsuite/update-ship-method?netsuiteInternalId=${netsuiteInternalId}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      // const getdata = await fetch(
+      //   `/api/netsuite/update-ship-method?netsuiteInternalId=${netsuiteInternalId}`,
+      //   {
+      //     method: "GET",
+      //     headers: { "Content-Type": "application/json" },
+      //   }
+      // );
 
-      if (!getdata.ok) {
-        const err = await getdata.json();
-        toast.error(
-          "Failed to fetch sales order data in NetSuite: " + err.error
-        );
-        return;
-      }
+      // if (!getdata.ok) {
+      //   const err = await getdata.json();
+      //   toast.error(
+      //     "Failed to fetch sales order data in NetSuite: " + err.error
+      //   );
+      //   return;
+      // }
 
-      const data = await getdata.json();
-      console.log("Sales Order Data:", data);
-      const updateShipMethodRes = await fetch(
-        "/api/netsuite/update-ship-method",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            netsuiteInternalId,
-            shippingMethod: formData.requiredShippingMethod,
-          }),
-        }
-      );
+      // const data = await getdata.json();
+      // console.log("Sales Order Data:", data);
+      // const updateShipMethodRes = await fetch(
+      //   "/api/netsuite/update-ship-method",
+      //   {
+      //     method: "PATCH",
+      //     headers: { "Content-Type": "application/json" },
+      //     body: JSON.stringify({
+      //       netsuiteInternalId,
+      //       shippingMethod: formData.requiredShippingMethod,
+      //     }),
+      //   }
+      // );
 
-      if (!updateShipMethodRes.ok) {
-        const err = await updateShipMethodRes.json();
-        toast.error(
-          "Failed to update shipping method in NetSuite: " + err.error
-        );
-        return;
-      }
+      // if (!updateShipMethodRes.ok) {
+      //   const err = await updateShipMethodRes.json();
+      //   toast.error(
+      //     "Failed to update shipping method in NetSuite: " + err.error
+      //   );
+      //   return;
+      // }
 
       toast.success("Contact sent to NetSuite!");
     } catch (error) {

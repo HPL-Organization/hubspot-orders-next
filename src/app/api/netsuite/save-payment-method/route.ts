@@ -3,9 +3,13 @@ import { savePaymentMethod } from "../../../../../lib/netsuite/savePaymentMethod
 
 export async function POST(req: Request) {
   try {
-    const { customerInternalId, token } = await req.json();
+    const { customerInternalId, token, accountNumberLastFour, accountType } =
+      await req.json();
 
-    const data = await savePaymentMethod(customerInternalId, token);
+    const data = await savePaymentMethod(customerInternalId, token, {
+      accountNumberLastFour,
+      accountType,
+    });
 
     return NextResponse.json(data, { status: 200 });
   } catch (error) {

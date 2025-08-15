@@ -17,6 +17,7 @@ export async function PATCH(req) {
   const accessToken = await getValidToken();
 
   try {
+    // Fetch the current shipcarrier field using SuiteQL
     const suiteQLQuery = `
       SELECT id, shipcarrier
       FROM transaction
@@ -46,17 +47,18 @@ export async function PATCH(req) {
     const existingShipCarrier = queryRes.data.items[0].shipcarrier;
     console.log("Existing Ship Carrier:", existingShipCarrier);
 
-    // Prepare the update payload for the Sales Order
-    const payload = {
-      shipcarrier: {
-        id: shippingMethod.toLowerCase(),
-        refName: shippingMethod.toUpperCase(),
-      },
-    };
+    // Update the shipcarrier field using SuiteQL
+    const updateQuery = `
+      UPDATE transaction
+      SET shipcarrier = '${shippingMethod.toLowerCase()}'
+      WHERE id = ${netsuiteInternalId}
+        AND type = 'SalesOrd'
+    `;
 
-    const updateRes = await axios.patch(
-      `${BASE_URL}/record/v1/salesOrder/${netsuiteInternalId}`,
-      payload,
+    // Execute the SuiteQL update
+    const updateRes = await axios.post(
+      `${BASE_URL}/query/v1/suiteql`,
+      { q: updateQuery },
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

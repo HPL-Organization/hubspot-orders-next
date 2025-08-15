@@ -6,6 +6,10 @@ import {
 } from "../HubSpot";
 import { getInvoiceLineId } from "./getInvoiceLineId";
 import { getInvoicesForSalesOrder } from "./getInvoicesForSalesOrder";
+import {
+  getContactShippingAddress,
+  isInternational,
+} from "../hubspot/checkShippingAddress";
 
 const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
@@ -32,6 +36,10 @@ export async function createNetsuiteSalesOrder(
   }
 ) {
   const accessToken = await getValidToken();
+  const addr = await getContactShippingAddress(hubspotContactId);
+  const effectiveShipComplete = isInternational(addr?.country)
+    ? true
+    : shipComplete;
   const customerId = await findCustomerByHubspotId(
     hubspotContactId,
     accessToken
@@ -46,7 +54,7 @@ export async function createNetsuiteSalesOrder(
   const payload = buildBasePayload(
     customerId,
     hubspotSoId,
-    shipComplete,
+    effectiveShipComplete,
     salesTeam,
     lineItems
   );
@@ -79,6 +87,7 @@ export async function createNetsuiteSalesOrder(
         existingSOId,
         filteredLines,
         cleanedSalesTeam,
+        effectiveShipComplete,
         accessToken
       );
     } else {
@@ -275,10 +284,11 @@ async function clearSalesTeam(soId, token) {
   );
 }
 
-async function applySalesOrderPatch(soId, items, team, token) {
+async function applySalesOrderPatch(soId, items, team, shipComplete, token) {
   await axios.patch(
     `${BASE_URL}/record/v1/salesOrder/${soId}`,
     {
+      shipcomplete: shipComplete,
       salesTeam: { replaceAll: true, items: team },
       item: { replaceAll: false, items },
     },
