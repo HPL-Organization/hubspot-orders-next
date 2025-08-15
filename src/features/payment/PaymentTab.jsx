@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { CircularProgress, Box } from "@mui/material";
-import AddPaymentMethod from "../../../components/versapay/AddPaymentMethod";
-import PaymentMethods from "../../../components/versapay/PaymentMethods";
+import AddPaymentMethod from "../../../components/Versapay/AddPaymentMethod";
+import PaymentMethods from "../../../components/Versapay/PaymentMethods";
 
 const InvoiceGrid = dynamic(() => import("../../../components/InvoiceGrid"), {
   ssr: false,
