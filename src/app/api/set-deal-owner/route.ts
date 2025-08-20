@@ -73,10 +73,12 @@ export async function GET(req: NextRequest) {
   try {
     // Step 1: Get hubspot_owner_id
     const dealRes = await hubspot.get(`/crm/v3/objects/deals/${dealId}`, {
-      params: { properties: "hubspot_owner_id" },
+      params: { properties: "hubspot_owner_id, dealstage" },
     });
 
     const ownerId = dealRes.data.properties?.hubspot_owner_id;
+    const dealStage = dealRes.data.properties?.dealstage;
+    console.log("deal stage api", dealStage);
 
     if (!ownerId) {
       return NextResponse.json({ ownerEmail: null });
@@ -86,7 +88,7 @@ export async function GET(req: NextRequest) {
     const ownerRes = await hubspot.get(`/crm/v3/owners/${ownerId}`);
     const ownerEmail = ownerRes.data.email;
 
-    return NextResponse.json({ ownerEmail });
+    return NextResponse.json({ ownerEmail, dealStage });
   } catch (err: any) {
     console.error(
       " Error fetching deal owner:",

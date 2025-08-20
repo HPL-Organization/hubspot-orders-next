@@ -30,6 +30,9 @@ function App() {
 
   const [netsuiteStatus, setNetsuiteStatus] = useState("loading");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("loading");
+  const [hasAnyFulfillment, setHasAnyFulfillment] = useState(null);
+
+  const [dealStage, setDealStage] = useState();
 
   const orderData = {
     orderNumber: netsuiteTranId || "No associated sales order",
@@ -49,7 +52,9 @@ function App() {
 
         // 2. Fetch current HubSpot deal owner
         const ownerRes = await fetch(`/api/set-deal-owner?dealId=${dealIdURL}`);
-        const { ownerEmail } = await ownerRes.json();
+        const { ownerEmail, dealStage } = await ownerRes.json();
+        console.log("Deal Stage", dealStage);
+        setDealStage(dealStage);
 
         // 3. Match email to one of the reps
         if (ownerEmail && reps.some((r) => r.email === ownerEmail)) {
@@ -176,7 +181,10 @@ function App() {
 
   //fulfillment status useffect
   useEffect(() => {
-    if (!netsuiteInternalId) return;
+    if (!netsuiteInternalId) {
+      setHasAnyFulfillment(null);
+      return;
+    }
 
     const computeFulfillmentStatus = async () => {
       try {
@@ -187,6 +195,8 @@ function App() {
         const ordered = data.orderedLineIds || [];
         const fulfilled = new Set(data.fulfilledLineIds || []);
 
+        setHasAnyFulfillment(fulfilled.size > 0);
+        console.log("Full to order", hasAnyFulfillment);
         if (ordered.length === 0) {
           setFulfillmentStatus("Not Fulfilled");
           return;
@@ -211,6 +221,7 @@ function App() {
 
   const dealStatus = "closedWon";
   console.log("**", netsuiteInternalId);
+  const hasSalesOrder = !!netsuiteInternalId;
   const tabs = [
     {
       key: "info",
@@ -226,6 +237,8 @@ function App() {
           repOptions={repOptions}
           setNetsuiteTranId={setNetsuiteTranId}
           setNetsuiteInternalId={setNetsuiteInternalId}
+          hasAnyFulfillment={hasAnyFulfillment}
+          onRepChange={handleRepChange}
         />
       ),
     },
@@ -234,11 +247,16 @@ function App() {
           {
             key: "payment",
             label: "Payment",
+            disabled: !hasSalesOrder,
+            disabledReason: "Create a NetSuite Sales Order to enable payments.",
             component: <PaymentTab netsuiteInternalId={netsuiteInternalId} />,
           },
           {
             key: "fulfillment",
             label: "Fulfillment",
+            disabled: !hasSalesOrder,
+            disabledReason:
+              "Create a NetSuite Sales Order to enable fulfillment.",
             component: (
               <FulfillmentTab netsuiteInternalId={netsuiteInternalId} />
             ),
@@ -253,6 +271,7 @@ function App() {
         orderData={orderData}
         repOptions={repOptions}
         onRepChange={handleRepChange}
+        dealStage={dealStage}
       />
       <MainTabs tabs={tabs} />
     </div>

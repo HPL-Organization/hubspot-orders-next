@@ -13,6 +13,8 @@ import {
   Box,
   CircularProgress,
   MenuItem,
+  Backdrop,
+  LinearProgress,
 } from "@mui/material";
 import ListboxComponent from "../../../components/ListBoxComponent";
 import { Checkbox, FormControlLabel } from "@mui/material";
@@ -24,8 +26,10 @@ const OrderTab = ({
   repOptions,
   setNetsuiteTranId,
   setNetsuiteInternalId,
+  hasAnyFulfillment,
+  onRepChange,
 }) => {
-  //make sure we have netsuite sales order internal id loaded-
+  //make sure internal id loaded-
   if (netsuiteInternalId === undefined) {
     return (
       <div className="p-8 max-w-6xl mx-auto">
@@ -36,6 +40,29 @@ const OrderTab = ({
       </div>
     );
   }
+
+  const editsLocked = hasAnyFulfillment === true;
+
+  // Sales Channel
+  const [salesChannels, setSalesChannels] = useState([]); // [{ id, value, label }]
+  const [salesChannelLoading, setSalesChannelLoading] = useState(true);
+  const [selectedSalesChannel, setSelectedSalesChannel] = useState(null);
+  const [initialSalesChannelFromDeal, setInitialSalesChannelFromDeal] =
+    useState(null);
+
+  // Affiliates
+  const [affiliates, setAffiliates] = useState([]); // [{ id, label, entityId?, altName?, inactive? }]
+  const [affiliateLoading, setAffiliateLoading] = useState(false);
+  const [selectedAffiliate, setSelectedAffiliate] = useState(null);
+  const [initialAffiliateFromDeal, setInitialAffiliateFromDeal] =
+    useState(null);
+  const NO_AFFIL = { id: "__NONE__", label: "No affiliate", altName: null };
+  const [affiliateInitDone, setAffiliateInitDone] = useState(false);
+  const affiliateOptions = useMemo(
+    () => [NO_AFFIL, ...affiliates],
+    [affiliates]
+  );
+  const isNoAffiliate = (opt) => opt?.id === "__NONE__";
 
   //sales team
   const [salesTeam, setSalesTeam] = useState([
@@ -60,6 +87,7 @@ const OrderTab = ({
   const [fulfilledItemIds, setFulfilledItemIds] = useState([]);
 
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [loaderIdx, setLoaderIdx] = useState(0);
 
   const [useMultiSalesTeam, setUseMultiSalesTeam] = useState(false);
 
@@ -71,6 +99,52 @@ const OrderTab = ({
     () => productCatalog,
     [productCatalog]
   );
+
+  const LOADING_FOOTER = { __footer: true };
+
+  console.log("fulfilment status from props", hasAnyFulfillment);
+
+  const LOADER_TEXT = [
+    "Started creating NetSuite order…",
+    "Pushing line items…",
+    "Applying discounts…",
+    "Syncing Sales team",
+    "Adding affliates",
+    "Finishing up…",
+  ];
+
+  const triggerOwnerUpdateFromPrimary = React.useCallback(() => {
+    if (!useMultiSalesTeam) return;
+
+    const primary = salesTeam.find((m) => m.isPrimary && m.id);
+    if (!primary) return;
+
+    const rep = repOptions.find((r) => String(r.id) === String(primary.id));
+    if (!rep?.email) return;
+
+    if (rep.email === repEmail) return;
+
+    onRepChange?.(rep.email);
+  }, [useMultiSalesTeam, salesTeam, repOptions, repEmail, onRepChange]);
+
+  //loading text useffect
+  useEffect(() => {
+    if (!creatingOrder) {
+      setLoaderIdx(0);
+      return;
+    }
+    const last = LOADER_TEXT.length - 1;
+    const id = setInterval(() => {
+      setLoaderIdx((prev) => {
+        if (prev >= last) {
+          clearInterval(id);
+          return last;
+        }
+        return prev + 1;
+      });
+    }, 2500);
+    return () => clearInterval(id);
+  }, [creatingOrder]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -106,6 +180,7 @@ const OrderTab = ({
           available: p.available ?? 0,
           imageUrl: p.imageUrl || "https://via.placeholder.com/40",
           unitPrice: p.price ?? 0,
+          search: normalize(`${p.sku} ${p.name ?? ""} ${p.description ?? ""}`),
         }));
 
         setProductCatalog(mapped);
@@ -134,6 +209,7 @@ const OrderTab = ({
           available: p.available ?? 0,
           imageUrl: p.imageUrl || "https://via.placeholder.com/40",
           unitPrice: p.price ?? 0,
+          search: normalize(`${p.sku} ${p.name ?? ""} ${p.description ?? ""}`),
         }));
 
         console.log(` Background sync received ${mapped.length} products`);
@@ -149,10 +225,6 @@ const OrderTab = ({
             );
             return finalCatalog;
           });
-          console.log(
-            " All products loaded. Final count:",
-            finalCatalog.length
-          );
 
           setAllProductsFetched(true);
         }
@@ -182,14 +254,16 @@ const OrderTab = ({
         const res = await fetch(`/api/deal-line-items?dealId=${dealId}`);
         const data = await res.json();
 
-        if (!Array.isArray(data)) {
+        const itemsArray = Array.isArray(data) ? data : data?.items;
+        console.log(itemsArray);
+        if (!Array.isArray(itemsArray)) {
           console.error("Unexpected response:", data);
           return;
         }
 
         // Populate rows for DataGrid
         setRows(
-          data.map((item) => {
+          itemsArray.map((item) => {
             const qty = Number(item.quantity) || 0;
             const price = Number(item.unitPrice) || 0;
             const discount = Number(item.unitDiscount) || 0;
@@ -207,7 +281,7 @@ const OrderTab = ({
         );
 
         // Also set selectedGridProducts for saving/editing
-        const mapped = data.map((item) => ({
+        const mapped = itemsArray.map((item) => ({
           id: item.id,
           sku: item.sku,
           quantity: item.quantity,
@@ -216,6 +290,19 @@ const OrderTab = ({
           productName: item.productName,
         }));
         setSelectedGridProducts(mapped);
+
+        if (!Array.isArray(data)) {
+          setInitialSalesChannelFromDeal({
+            id: data?.salesChannelId ?? null,
+            value: data?.salesChannel ?? null,
+          });
+        }
+        if (data?.affiliateId || data?.affiliateName) {
+          setInitialAffiliateFromDeal({
+            id: data?.affiliateId ? String(data.affiliateId) : null,
+            name: data?.affiliateName ?? null,
+          });
+        }
       } catch (err) {
         console.error("Failed to fetch existing line items:", err);
       }
@@ -272,12 +359,189 @@ const OrderTab = ({
     fetchSalesTeam();
   }, [netsuiteInternalId]);
 
+  //sales channels useeffects
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      try {
+        setSalesChannelLoading(true);
+        const res = await fetch("/api/netsuite/sales-channel");
+        const data = await res.json();
+        if (!aborted && Array.isArray(data)) {
+          setSalesChannels(
+            data.map((d) => ({
+              id: String(d.id ?? d.value),
+              value: String(d.value ?? ""),
+              label: d.label ?? d.value ?? "",
+            }))
+          );
+          console.log("Sales channel dets", salesChannels);
+        }
+      } catch (e) {
+        console.error("Failed to load sales channels:", e);
+      } finally {
+        if (!aborted) setSalesChannelLoading(false);
+      }
+    })();
+    return () => {
+      aborted = true;
+    };
+  }, []);
+
+  //sales channel useeffect
+  useEffect(() => {
+    if (
+      !selectedSalesChannel &&
+      initialSalesChannelFromDeal &&
+      salesChannels.length
+    ) {
+      const wantedId = initialSalesChannelFromDeal.id
+        ? String(initialSalesChannelFromDeal.id)
+        : null;
+      const wantedVal = initialSalesChannelFromDeal.value || null;
+
+      const match =
+        (wantedId && salesChannels.find((o) => String(o.id) === wantedId)) ||
+        (wantedVal && salesChannels.find((o) => o.value === wantedVal)) ||
+        null;
+
+      if (match) {
+        setSelectedSalesChannel(match);
+      } else if (wantedVal) {
+        setSelectedSalesChannel({
+          id: wantedId ?? wantedVal,
+          value: wantedVal,
+          label: wantedVal,
+        });
+      }
+    }
+  }, [salesChannels, initialSalesChannelFromDeal, selectedSalesChannel]);
+
+  //affiliate sales channel
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      try {
+        setAffiliateLoading(true);
+        const res = await fetch("/api/netsuite/get-affiliates");
+        const data = await res.json();
+        if (!aborted) {
+          const opts = (data?.affiliates ?? []).map((a) => ({
+            id: String(a.id),
+            label:
+              a.label || a.altName || a.companyName || a.entityId || `#${a.id}`,
+            entityId: a.entityId ?? null,
+            altName: a.altName ?? null,
+            inactive: !!a.inactive,
+          }));
+          setAffiliates(opts);
+        }
+      } catch (e) {
+        console.error("Failed to load affiliates:", e);
+      } finally {
+        if (!aborted) setAffiliateLoading(false);
+      }
+    })();
+    return () => {
+      aborted = true;
+    };
+  }, []);
+
+  //affiliate initial load
+  useEffect(() => {
+    if (affiliateInitDone) return;
+    if (!affiliates.length) return;
+
+    if (!initialAffiliateFromDeal?.id && !initialAffiliateFromDeal?.name) {
+      setSelectedAffiliate(NO_AFFIL);
+      setAffiliateInitDone(true);
+      return;
+    }
+
+    const wantedId = initialAffiliateFromDeal.id
+      ? String(initialAffiliateFromDeal.id)
+      : null;
+    const wantedName = initialAffiliateFromDeal.name || null;
+
+    const match = wantedId ? affiliates.find((a) => a.id === wantedId) : null;
+
+    if (match) {
+      setSelectedAffiliate(match);
+      setAffiliateInitDone(true);
+      return;
+    }
+
+    const fallback = {
+      id: wantedId ?? (wantedName || "unknown"),
+      label: wantedName ?? (wantedId ? `Partner #${wantedId}` : "Affiliate"),
+      altName: wantedName ?? null,
+      inactive: true,
+    };
+
+    setAffiliates((prev) =>
+      wantedId && prev.some((a) => a.id === wantedId)
+        ? prev
+        : [fallback, ...prev]
+    );
+    setSelectedAffiliate(fallback);
+    setAffiliateInitDone(true);
+  }, [affiliates, initialAffiliateFromDeal, affiliateInitDone]);
+
+  //  search helpers
+  const normalize = (s) =>
+    (s || "")
+      .toString()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const tokenize = (q) => normalize(q).split(" ").filter(Boolean);
+
+  const scoreOption = (indexStr, tokens, rawQuery) => {
+    if (!tokens.length) return 0;
+    const words = indexStr.split(" ");
+    let score = 0;
+    for (const t of tokens) {
+      if (words.includes(t)) {
+        score += 6;
+        continue;
+      }
+
+      if (words.some((w) => w.startsWith(t))) {
+        score += 3;
+        continue;
+      }
+
+      const idx = indexStr.indexOf(t);
+      if (idx !== -1) {
+        score += 1 + Math.max(0, 10 - Math.floor(idx / 5)) * 0.1;
+        continue;
+      }
+
+      return -Infinity;
+    }
+
+    const normQ = normalize(rawQuery);
+    if (normQ && indexStr.includes(normQ)) score += 4;
+    return score;
+  };
+
   const handleSaveClick = async () => {
     try {
       const res = await fetch("/api/deal-line-items", {
         method: "POST",
         body: JSON.stringify({
           dealId,
+          salesChannel: selectedSalesChannel ?? null,
+          affiliate:
+            selectedAffiliate && !isNoAffiliate(selectedAffiliate)
+              ? {
+                  id: String(selectedAffiliate.id),
+                  name: selectedAffiliate.altName,
+                }
+              : null,
+
           selectedProducts: rows
             .filter(
               (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
@@ -319,6 +583,7 @@ const OrderTab = ({
           return row;
         })
       );
+      triggerOwnerUpdateFromPrimary();
 
       toast.success("Line items saved successfully in Hubspot Deal!");
     } catch (err) {
@@ -337,6 +602,38 @@ const OrderTab = ({
     });
   }, [productCatalog]);
 
+  //quantity available for each product
+  const availabilityById = useMemo(() => {
+    const m = new Map();
+    productCatalog.forEach((p) =>
+      m.set(String(p.id), Number(p.available ?? 0))
+    );
+
+    return m;
+  }, [productCatalog]);
+
+  const availabilityBySku = useMemo(() => {
+    const m = new Map();
+
+    productCatalog.forEach((p) =>
+      m.set(String(p.sku), Number(p.available ?? 0))
+    );
+    return m;
+  }, [productCatalog]);
+
+  const rowsWithAvailability = useMemo(() => {
+    if (!rows?.length) return rows;
+
+    return rows.map((r) => {
+      const idKey = r.ns_item_id ?? r.nsItemId ?? r.productId ?? r.id;
+      const byId = availabilityById.get(String(idKey));
+      const bySku = availabilityBySku.get(String(r.sku));
+      const avail = byId ?? bySku ?? 0;
+
+      return { ...r, quantityAvailable: avail };
+    });
+  }, [rows, availabilityById, availabilityBySku]);
+
   const columns = [
     { field: "sku", headerName: "SKU", flex: 1, editable: true },
     { field: "productName", headerName: "Product", flex: 2, editable: true },
@@ -347,6 +644,23 @@ const OrderTab = ({
       flex: 1,
       editable: true,
     },
+    {
+      field: "quantityAvailable",
+      headerName: "Available",
+      flex: 1,
+      editable: false,
+      sortable: false,
+      renderCell: (params) => {
+        const qty = Number(params.row?.quantity) || 0;
+        const avail = Number(params.value) || 0;
+        return (
+          <span style={{ color: qty > avail ? "crimson" : "inherit" }}>
+            {avail}
+          </span>
+        );
+      },
+    },
+
     {
       field: "unitPrice",
       headerName: "Unit Price",
@@ -478,7 +792,8 @@ const OrderTab = ({
     }
   };
 
-  const handleProcessRowUpdate = (newRow) => {
+  const handleProcessRowUpdate = (newRow, oldRow) => {
+    if (editsLocked) return oldRow ?? newRow;
     const qty = Number(newRow.quantity) || 0;
     const price = Number(newRow.unitPrice) || 0;
     const discount = Number(newRow.unitDiscount) || 0;
@@ -511,6 +826,7 @@ const OrderTab = ({
 
     return updatedRow;
   };
+  console.log(selectedSalesChannel);
 
   const totalSum = rows.reduce((acc, row) => acc + (row.total || 0), 0);
 
@@ -556,7 +872,6 @@ const OrderTab = ({
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 text-black">Order</h1>
-
       <Box sx={{ mb: 2 }}>
         {loadingAllProducts ? (
           <Box sx={{ mt: 2 }}>
@@ -569,6 +884,7 @@ const OrderTab = ({
             options={uniqueProducts}
             value={selectedProducts}
             onChange={(e, newValue) => setSelectedProducts(newValue)}
+            // getOptionLabel={(option) => `${option.sku} - ${option.name}`}
             getOptionLabel={(option) => `${option.sku} - ${option.name}`}
             loading={!allProductsFetched}
             loadingText="Still loading more products..."
@@ -577,19 +893,24 @@ const OrderTab = ({
                 ? "Searching all products..."
                 : "No matching products"
             }
-            filterOptions={(options, { inputValue }) =>
-              options
-                .filter((opt) =>
-                  `${opt.sku} ${opt.name}`
-                    .toLowerCase()
-                    .includes(inputValue.toLowerCase())
-                )
-                .slice(0, 100)
-            }
+            filterOptions={(options, { inputValue }) => {
+              const tokens = tokenize(inputValue);
+              if (!tokens.length) return options.slice(0, 100);
+              const ranked = [];
+              for (const opt of options) {
+                const idxStr =
+                  opt.search ?? normalize(`${opt.sku} ${opt.name}`);
+                const s = scoreOption(idxStr, tokens, inputValue);
+                if (s !== -Infinity) ranked.push([s, opt]);
+              }
+              ranked.sort((a, b) => b[0] - a[0]);
+              return ranked.slice(0, 100).map(([, opt]) => opt);
+            }}
             isOptionEqualToValue={(opt, val) => opt.sku === val.sku}
             slotProps={{
               listbox: {
                 component: ListboxComponent,
+                showFooter: !allProductsFetched,
               },
             }}
             renderOption={(props, option) => (
@@ -648,19 +969,18 @@ const OrderTab = ({
           </MuiButton>
         )}
       </Box>
-
       <div style={{ height: 400, width: "100%" }}>
         <DataGrid
-          rows={rows}
+          rows={rowsWithAvailability}
           columns={columns}
           getRowId={(row) => row.id}
           disableRowSelectionOnClick
           processRowUpdate={handleProcessRowUpdate}
           pageSize={100}
           rowsPerPageOptions={[100]}
+          isCellEditable={() => !editsLocked}
         />
       </div>
-
       <div className="flex justify-end mt-4 text-xl font-semibold text-slate-700">
         Total: $
         {totalSum.toLocaleString(undefined, {
@@ -689,7 +1009,7 @@ const OrderTab = ({
               onChange={(e) => setUseMultiSalesTeam(e.target.checked)}
             />
           }
-          label="Add Sales team memnbers?"
+          label="Add Sales team members?"
           sx={{ color: "black", mt: 1 }}
         />
       </div>
@@ -796,7 +1116,55 @@ const OrderTab = ({
           </div>
         </div>
       )}
+      {/* Sales Channel UI */}
+      <Box sx={{ mt: 3, mb: 2, maxWidth: 400 }}>
+        <Autocomplete
+          options={salesChannels}
+          loading={salesChannelLoading}
+          value={selectedSalesChannel}
+          onChange={(e, newVal) => setSelectedSalesChannel(newVal ?? null)}
+          getOptionLabel={(opt) => opt.label || opt.value || ""}
+          isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+          noOptionsText={
+            salesChannelLoading ? "Loading channels..." : "No channels found"
+          }
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Sales Channel"
+              placeholder="Select sales channel"
+            />
+          )}
+        />
+      </Box>
 
+      {/* Affiliate UI */}
+      <Box sx={{ mt: 3, mb: 2, maxWidth: 400 }}>
+        <Autocomplete
+          options={affiliateOptions}
+          loading={affiliateLoading}
+          value={selectedAffiliate}
+          onChange={(e, newVal) => {
+            setAffiliateInitDone(true);
+
+            setSelectedAffiliate(
+              !newVal || isNoAffiliate(newVal) ? NO_AFFIL : newVal
+            );
+          }}
+          getOptionLabel={(opt) => opt?.label || ""}
+          isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+          noOptionsText={
+            affiliateLoading ? "Loading affiliates..." : "No affiliates found"
+          }
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Affiliate"
+              placeholder="Select affiliate"
+            />
+          )}
+        />
+      </Box>
       {/* Save Buttons */}
       <div className=" flex gap-1">
         <Button
@@ -841,7 +1209,8 @@ const OrderTab = ({
               toast.error("Total sales team contribution must be 100%");
               return;
             }
-
+            console.log("here");
+            handleSaveClick();
             setCreatingOrder(true); //  start loading state
 
             try {
@@ -884,6 +1253,11 @@ const OrderTab = ({
                   replaceAll: true,
                   items: formattedSalesTeam,
                 },
+                salesChannel: selectedSalesChannel.id ?? null,
+                affiliateId:
+                  selectedAffiliate && !isNoAffiliate(selectedAffiliate)
+                    ? selectedAffiliate.id
+                    : null,
                 //unfulfilledLines,
                 //fulfilledLinesToEdit,
               };
@@ -929,6 +1303,24 @@ const OrderTab = ({
           {creatingOrder ? "Submitting..." : "Mark Closed, send to Netsuite "}
         </Button>
       </div>
+      <Backdrop
+        open={creatingOrder}
+        sx={{
+          color: "#fff",
+          zIndex: (theme) => theme.zIndex.modal + 1,
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
+        <CircularProgress />
+
+        <div className="text-white text-lg font-medium">
+          {LOADER_TEXT[loaderIdx]}
+        </div>
+        <Box sx={{ width: 320 }}>
+          <LinearProgress />
+        </Box>
+      </Backdrop>
     </div>
   );
 };

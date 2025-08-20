@@ -16,7 +16,7 @@ const ListboxComponent = React.forwardRef(function ListboxComponent(
   props,
   ref
 ) {
-  const { children, ...other } = props;
+  const { children, showFooter, ...other } = props;
 
   const itemData = Array.isArray(children) ? children : [children];
   const itemCount = itemData.length;
@@ -31,11 +31,18 @@ const ListboxComponent = React.forwardRef(function ListboxComponent(
         itemSize={itemSize}
         itemCount={itemCount}
         itemData={itemData}
-        outerElementType="div" // ✅ FIXED: use <div> not <React.Fragment>
+        outerElementType="div"
         innerElementType="ul"
       >
         {renderRow}
       </FixedSizeList>
+      {showFooter && (
+        <li aria-disabled="true">
+          <div style={{ textAlign: "center", padding: 8, color: "#6b7280" }}>
+            Loading…
+          </div>
+        </li>
+      )}
     </div>
   );
 });

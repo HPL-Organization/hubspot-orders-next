@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import InputField from "../../../components/inputField";
 import Button from "../../../components/button";
 import { useSearchParams } from "next/navigation";
-import { toast } from "react-toastify"; //  import toast
+import { toast } from "react-toastify";
 
 import GoogleMapsLoader from "../../../components/GoogleMapsLoader";
 import AddressAutocomplete from "../../../components/AddressAutocomplete";
@@ -12,8 +12,11 @@ const InfoTab = ({ netsuiteInternalId }) => {
   const searchParams = useSearchParams();
   const dealId = searchParams.get("dealId");
   console.log("Ns id", netsuiteInternalId);
+
   const [contactId, setContactId] = useState(null);
-  const [prevBilling, setPrevBilling] = useState(null);
+
+  const [shippingMethodOptions, setShippingMethodOptions] = useState([]);
+
   const [formData, setFormData] = useState({
     firstName: "",
     middleName: "",
@@ -37,12 +40,9 @@ const InfoTab = ({ netsuiteInternalId }) => {
       zip: "",
       country: "",
     },
-    sameAsShipping: false,
-  });
 
-  const [showShipping, setShowShipping] = useState(false);
-  const [showBilling, setShowBilling] = useState(false);
-  const [shippingMethodOptions, setShippingMethodOptions] = useState([]);
+    requiredShippingMethod: "",
+  });
 
   useEffect(() => {
     if (!dealId) return;
@@ -84,7 +84,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
           requiredShippingMethod:
             data.properties.required_shipping_method || "",
         }));
-        console.log("Shipping Method", data.properties);
       } catch (err) {
         toast.error("Failed to fetch contact.");
         console.error("Failed to fetch contact", err);
@@ -94,7 +93,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
     fetchContact();
   }, [dealId]);
 
-  //useffect to get shipping method options
   useEffect(() => {
     const fetchShippingOptions = async () => {
       try {
@@ -130,21 +128,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
     }));
   };
 
-  const handleSameAsShipping = () => {
-    setFormData((prev) => {
-      const isEnabling = !prev.sameAsShipping;
-
-      return {
-        ...prev,
-        sameAsShipping: isEnabling,
-        billing: isEnabling
-          ? (setPrevBilling(prev.billing), { ...prev.shipping }) //  Backup billing, apply shipping
-          : prevBilling || prev.billing, //  Restore if backup exists
-      };
-    });
-  };
-
-  //save to hubspot
+  // Save to HubSpot
   const handleSaveHubSpot = async () => {
     if (!contactId) {
       toast.error("Contact ID not available.");
@@ -196,7 +180,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
     }
   };
 
-  //save to netsuite
+  // Save to NetSuite
   const handleSaveNetSuite = async () => {
     if (!contactId) {
       toast.error("Contact ID not available.");
@@ -239,43 +223,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
         toast.error("NetSuite failed: " + err.error);
         return;
       }
-      // const getdata = await fetch(
-      //   `/api/netsuite/update-ship-method?netsuiteInternalId=${netsuiteInternalId}`,
-      //   {
-      //     method: "GET",
-      //     headers: { "Content-Type": "application/json" },
-      //   }
-      // );
-
-      // if (!getdata.ok) {
-      //   const err = await getdata.json();
-      //   toast.error(
-      //     "Failed to fetch sales order data in NetSuite: " + err.error
-      //   );
-      //   return;
-      // }
-
-      // const data = await getdata.json();
-      // console.log("Sales Order Data:", data);
-      // const updateShipMethodRes = await fetch(
-      //   "/api/netsuite/update-ship-method",
-      //   {
-      //     method: "PATCH",
-      //     headers: { "Content-Type": "application/json" },
-      //     body: JSON.stringify({
-      //       netsuiteInternalId,
-      //       shippingMethod: formData.requiredShippingMethod,
-      //     }),
-      //   }
-      // );
-
-      // if (!updateShipMethodRes.ok) {
-      //   const err = await updateShipMethodRes.json();
-      //   toast.error(
-      //     "Failed to update shipping method in NetSuite: " + err.error
-      //   );
-      //   return;
-      // }
 
       toast.success("Contact sent to NetSuite!");
     } catch (error) {
@@ -284,6 +231,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
     }
   };
 
+  // Save both
   const handleSave = async () => {
     if (!contactId) {
       toast.error("Contact ID not available.");
@@ -315,7 +263,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
     };
 
     try {
-      // Step 1 - Update contact in HubSpot
       const res = await fetch("/api/contact", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -329,7 +276,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
       }
       toast.success("Contact saved in Hubspot");
 
-      //  Step 2 - Send to NetSuite
       const netsuitePayload = {
         id: contactId,
         firstName: formData.firstName,
@@ -374,6 +320,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 text-black">Info</h1>
+
       <div className="flex justify-end mb-2">
         <Button
           onClick={handleSaveHubSpot}
@@ -385,6 +332,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
           Save to NetSuite
         </Button>
       </div>
+
       <div className="grid grid-cols-3 gap-4 mb-8 text-black">
         <InputField
           label="First Name"
@@ -423,7 +371,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
           onChange={handleChange}
         />
       </div>
-      <div className="mb-4">
+
+      <div className="mb-6">
         <label className="text-lg font-semibold text-black">
           Required Shipping Method
         </label>
@@ -433,132 +382,87 @@ const InfoTab = ({ netsuiteInternalId }) => {
           onChange={handleChange}
           className="block w-full mt-2 p-2 border border-gray-300 rounded-md text-black"
         >
-          <option value="">
-            <span className=" text-black">Select a shipping method</span>
-          </option>
+          <option value="">Select a shipping method</option>
           {shippingMethodOptions.map((option) => (
             <option key={option.value} value={option.value}>
-              <span className=" text-black">{option.label}</span>
+              {option.label}
             </option>
           ))}
         </select>
       </div>
 
-      <div
-        className="flex items-center justify-between cursor-pointer mb-4 p-4 rounded-2xl bg-white/30 backdrop-blur-sm border border-white/40 shadow-md hover:shadow-lg transition"
-        onClick={() => setShowShipping((prev) => !prev)}
-      >
-        <h2 className="text-lg font-semibold text-black">Shipping Address</h2>
-        <span className="text-black text-xl">{showShipping ? "▲" : "▼"}</span>
-      </div>
-
-      {showShipping && (
-        <>
-          <div className="mb-4">
-            <label className="block text-gray-700 mb-1">
-              <span className="text-blue-500 font-bold">Google</span> Shipping
-              Address Lookup
-            </label>
-            <GoogleMapsLoader>
-              <AddressAutocomplete
-                onAddressSelect={(parsed) => {
-                  handleAddressChange("shipping", "address1", parsed.address1);
-                  handleAddressChange("shipping", "city", parsed.city);
-                  handleAddressChange("shipping", "state", parsed.state);
-                  handleAddressChange("shipping", "zip", parsed.zip);
-                  handleAddressChange("shipping", "country", parsed.country);
-                }}
-              />
-            </GoogleMapsLoader>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-6 text-black">
-            {["address1", "city", "address2", "state", "zip", "country"].map(
-              (field) => (
-                <InputField
-                  key={field}
-                  label={field.charAt(0).toUpperCase() + field.slice(1)}
-                  value={formData.shipping[field]}
-                  onChange={(e) =>
-                    handleAddressChange("shipping", field, e.target.value)
-                  }
-                />
-              )
-            )}
-          </div>
-        </>
-      )}
-
+      {/* Shipping section (always visible, simple heading) */}
+      <h2 className="text-lg font-semibold mb-2 text-black">
+        Shipping Address
+      </h2>
       <div className="mb-4">
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={formData.sameAsShipping}
-            onChange={handleSameAsShipping}
-          />
-          <span className="text-gray-700">Billing same as Shipping</span>
+        <label className="block text-gray-700 mb-1">
+          <span className="text-blue-500 font-bold">Google</span> Shipping
+          Address Lookup
         </label>
+        <GoogleMapsLoader>
+          <AddressAutocomplete
+            onAddressSelect={(parsed) => {
+              handleAddressChange("shipping", "address1", parsed.address1);
+              handleAddressChange("shipping", "city", parsed.city);
+              handleAddressChange("shipping", "state", parsed.state);
+              handleAddressChange("shipping", "zip", parsed.zip);
+              handleAddressChange("shipping", "country", parsed.country);
+            }}
+          />
+        </GoogleMapsLoader>
       </div>
 
-      {!formData.sameAsShipping && (
-        <>
-          <div
-            className="flex items-center justify-between cursor-pointer mb-4 p-4 rounded-2xl bg-white/30 backdrop-blur-sm border border-white/40 shadow-md hover:shadow-lg transition"
-            onClick={() => setShowBilling((prev) => !prev)}
-          >
-            <h2 className="text-lg font-semibold text-black">
-              Billing Address
-            </h2>
-            <span className="text-black text-xl">
-              {showBilling ? "▲" : "▼"}
-            </span>
-          </div>
-          {showBilling && (
-            <>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-1">
-                  <span className="text-blue-500 font-bold">Google</span>{" "}
-                  Billing Address Lookup
-                </label>
-                <GoogleMapsLoader>
-                  <AddressAutocomplete
-                    onAddressSelect={(parsed) => {
-                      handleAddressChange(
-                        "billing",
-                        "address1",
-                        parsed.address1
-                      );
-                      handleAddressChange("billing", "city", parsed.city);
-                      handleAddressChange("billing", "state", parsed.state);
-                      handleAddressChange("billing", "zip", parsed.zip);
-                      handleAddressChange("billing", "country", parsed.country);
-                    }}
-                  />
-                </GoogleMapsLoader>
-              </div>
-              <div className="grid grid-cols-2 gap-4 mb-6 text-black">
-                {[
-                  "address1",
-                  "city",
-                  "address2",
-                  "state",
-                  "zip",
-                  "country",
-                ].map((field) => (
-                  <InputField
-                    key={field}
-                    label={field.charAt(0).toUpperCase() + field.slice(1)}
-                    value={formData.billing[field]}
-                    onChange={(e) =>
-                      handleAddressChange("billing", field, e.target.value)
-                    }
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
+      <div className="grid grid-cols-2 gap-4 mb-8 text-black">
+        {["address1", "city", "address2", "state", "zip", "country"].map(
+          (field) => (
+            <InputField
+              key={field}
+              label={field.charAt(0).toUpperCase() + field.slice(1)}
+              value={formData.shipping[field]}
+              onChange={(e) =>
+                handleAddressChange("shipping", field, e.target.value)
+              }
+            />
+          )
+        )}
+      </div>
+
+      {/* Billing section (only shown if not same as shipping), simple heading */}
+
+      <h2 className="text-lg font-semibold mb-2 text-black">Billing Address</h2>
+      <div className="mb-4">
+        <label className="block text-gray-700 mb-1">
+          <span className="text-blue-500 font-bold">Google</span> Billing
+          Address Lookup
+        </label>
+        <GoogleMapsLoader>
+          <AddressAutocomplete
+            onAddressSelect={(parsed) => {
+              handleAddressChange("billing", "address1", parsed.address1);
+              handleAddressChange("billing", "city", parsed.city);
+              handleAddressChange("billing", "state", parsed.state);
+              handleAddressChange("billing", "zip", parsed.zip);
+              handleAddressChange("billing", "country", parsed.country);
+            }}
+          />
+        </GoogleMapsLoader>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-8 text-black">
+        {["address1", "city", "address2", "state", "zip", "country"].map(
+          (field) => (
+            <InputField
+              key={field}
+              label={field.charAt(0).toUpperCase() + field.slice(1)}
+              value={formData.billing[field]}
+              onChange={(e) =>
+                handleAddressChange("billing", field, e.target.value)
+              }
+            />
+          )
+        )}
+      </div>
 
       <div className="flex justify-end mb-2">
         <Button
@@ -575,14 +479,4 @@ const InfoTab = ({ netsuiteInternalId }) => {
   );
 };
 
-// const WrappedInfoTab = () => (
-//   <LoadScript
-//     googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-//     libraries={["places"]}
-//   >
-//     <InfoTab />
-//   </LoadScript>
-// );
-
-// export default WrappedInfoTab;
 export default InfoTab;

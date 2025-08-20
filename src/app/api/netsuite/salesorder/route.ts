@@ -11,6 +11,8 @@ export async function POST(req: Request) {
       lineItems,
       shipComplete,
       salesTeam,
+      salesChannel,
+      affiliateId,
     } = body;
 
     if (!hubspotSoId || !hubspotContactId || !Array.isArray(lineItems)) {
@@ -25,7 +27,9 @@ export async function POST(req: Request) {
       hubspotContactId,
       lineItems,
       shipComplete,
-      salesTeam
+      salesTeam,
+      salesChannel,
+      affiliateId
     );
     return new Response(JSON.stringify(result), { status: 200 });
   } catch (err: any) {

@@ -33,9 +33,18 @@ export async function createNetsuiteSalesOrder(
       isPrimary: boolean;
       contribution: number;
     }[];
-  }
+  },
+  salesChannelId?: string | null,
+  affiliateId?: string | null
 ) {
   const accessToken = await getValidToken();
+  const resolvedSalesChannelId =
+    (salesChannelId && String(salesChannelId)) || "13";
+  const resolvedAffiliateId =
+    affiliateId != null && String(affiliateId).trim() !== ""
+      ? String(affiliateId)
+      : null;
+
   const addr = await getContactShippingAddress(hubspotContactId);
   const effectiveShipComplete = isInternational(addr?.country)
     ? true
@@ -56,7 +65,9 @@ export async function createNetsuiteSalesOrder(
     hubspotSoId,
     effectiveShipComplete,
     salesTeam,
-    lineItems
+    lineItems,
+    resolvedSalesChannelId,
+    resolvedAffiliateId
   );
 
   try {
@@ -83,12 +94,15 @@ export async function createNetsuiteSalesOrder(
       );
 
       await clearSalesTeam(existingSOId, accessToken);
+      await clearPartners(existingSOId, accessToken);
       await applySalesOrderPatch(
         existingSOId,
         filteredLines,
         cleanedSalesTeam,
         effectiveShipComplete,
-        accessToken
+        accessToken,
+        resolvedSalesChannelId,
+        resolvedAffiliateId
       );
     } else {
       await createNewSalesOrder(payload, accessToken);
@@ -115,17 +129,35 @@ function buildBasePayload(
   hubspotSoId: string,
   shipComplete: boolean,
   salesTeam: any,
-  lineItems: any[]
+  lineItems: any[],
+  salesChannelId: string,
+  affiliateId: string | null
 ) {
   return {
     entity: { id: customerId },
     custbodyhs_so_id: hubspotSoId,
     subsidiary: { id: "2" },
     currency: { id: "1" },
-    cseg_nsps_so_class: { id: "13" },
+    cseg_nsps_so_class: { id: salesChannelId },
     salesRep: { id: "-5" },
     salesTeam,
     shipcomplete: shipComplete,
+    ...(affiliateId ? { partner: { id: affiliateId } } : {}),
+    ...(affiliateId
+      ? {
+          partners: {
+            replaceAll: true,
+            items: [
+              {
+                partner: { id: affiliateId },
+                isPrimary: true,
+                // partnerRole is optional; skip unless you set DEFAULT_PARTNER_ROLE_ID
+                // ...(DEFAULT_PARTNER_ROLE_ID ? { partnerRole: { id: DEFAULT_PARTNER_ROLE_ID } } : {}),
+              },
+            ],
+          },
+        }
+      : {}),
     item: {
       replaceAll: false,
       items: lineItems.map((item) => ({
@@ -284,22 +316,75 @@ async function clearSalesTeam(soId, token) {
   );
 }
 
-async function applySalesOrderPatch(soId, items, team, shipComplete, token) {
-  await axios.patch(
-    `${BASE_URL}/record/v1/salesOrder/${soId}`,
-    {
-      shipcomplete: shipComplete,
-      salesTeam: { replaceAll: true, items: team },
-      item: { replaceAll: false, items },
+// async function applySalesOrderPatch(
+//   soId,
+//   items,
+//   team,
+//   shipComplete,
+//   token,
+//   salesChannelId,
+//   affiliateId
+// ) {
+//   const body: any = {
+//     shipcomplete: shipComplete,
+//     cseg_nsps_so_class: { id: salesChannelId },
+//     salesTeam: { replaceAll: true, items: team },
+//     item: { replaceAll: false, items },
+//   };
+//   if (affiliateId) {
+//     body.partner = { id: affiliateId };
+//   } else {
+//     body.fieldsToNull = ["partner"];
+//   }
+//   await axios.patch(`${BASE_URL}/record/v1/salesOrder/${soId}`, body, {
+//     headers: {
+//       Authorization: `Bearer ${token}`,
+//       Accept: "application/json",
+//       "Content-Type": "application/json",
+//     },
+//   });
+// }
+
+async function applySalesOrderPatch(
+  soId: string,
+  items: any[],
+  team: any[],
+  shipComplete: boolean,
+  token: string,
+  salesChannelId: string,
+  affiliateId: string | null
+) {
+  // const body: any = {
+  //   shipcomplete: shipComplete,
+  //   cseg_nsps_so_class: { id: salesChannelId },
+  //   salesTeam: { replaceAll: true, items: team },
+  //   item: { replaceAll: false, items },
+  // };
+  const body: any = {
+    shipcomplete: shipComplete,
+    cseg_nsps_so_class: { id: salesChannelId },
+    salesTeam: { replaceAll: true, items: team },
+    item: { replaceAll: false, items },
+
+    partner: affiliateId ? { id: affiliateId } : null,
+    partners: {
+      replaceAll: true,
+      items: affiliateId
+        ? [{ partner: { id: affiliateId }, isPrimary: true }]
+        : [],
     },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  };
+  console.log("sending body", body);
+
+  const url = `${BASE_URL}/record/v1/salesOrder/${soId}`;
+
+  await axios.patch(url, body, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+  });
 }
 
 async function createNewSalesOrder(payload, token) {
@@ -375,4 +460,18 @@ async function findSalesOrderByHubspotSoId(soId: string, token: string) {
     }
   );
   return res.data.items?.[0]?.id || null;
+}
+
+async function clearPartners(soId: string, token: string) {
+  await axios.patch(
+    `${BASE_URL}/record/v1/salesOrder/${soId}?replace=partners`,
+    { partners: { items: [] } },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+    }
+  );
 }

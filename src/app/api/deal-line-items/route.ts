@@ -11,115 +11,6 @@ const hubspot = axios.create({
 });
 
 //Get: Fetching Line items to keep frontend up to date
-// export async function GET(req: NextRequest) {
-//   const { searchParams } = new URL(req.url!);
-//   const dealId = searchParams.get("dealId");
-
-//   if (!dealId) {
-//     return new Response(JSON.stringify({ error: "Missing dealId" }), {
-//       status: 400,
-//     });
-//   }
-
-//   try {
-//     // 1. Fetch associated line items
-//     const associations = await hubspot.get(
-//       `/crm/v3/objects/deals/${dealId}/associations/line_items`
-//     );
-
-//     const lineItemIds = associations.data.results.map((r: any) => r.id);
-
-//     if (lineItemIds.length === 0) {
-//       return new Response(JSON.stringify([]), { status: 200 });
-//     }
-
-//     // 2. Fetch with all discount-related properties
-//     const lineItemDetails = await hubspot.post(
-//       `/crm/v3/objects/line_items/batch/read`,
-//       {
-//         properties: [
-//           "hs_product_id",
-//           "quantity",
-//           "hs_sku",
-//           "discount", // flat per-unit discount
-//           "hs_discount_percentage", // % discount
-//           "hs_total_discount", // calculated total discount
-//           "hs_pre_discount_amount", // original price before discount
-//         ],
-//         inputs: lineItemIds.map((id: string) => ({ id })),
-//       }
-//     );
-
-//     console.log(" Raw line item properties:");
-//     lineItemDetails.data.results.forEach((item: any) => {
-//       console.log(`LineItem ${item.id}:`, item.properties);
-//     });
-
-//     const items = lineItemDetails.data.results.map((item: any) => ({
-//       id: item.id,
-//       quantity: Number(item.properties.quantity),
-//       productId: item.properties.hs_product_id,
-//       sku: item.properties.hs_sku,
-//       discountFlat: Number(item.properties.discount) || 0,
-//       discountPercent: Number(item.properties.hs_discount_percentage) || 0,
-//       totalDiscount: Number(item.properties.hs_total_discount) || 0,
-//       preDiscountAmount: Number(item.properties.hs_pre_discount_amount) || 0,
-//     }));
-
-//     // 3. Get associated product names and prices
-//     const productIds = items.map((i) => i.productId);
-//     const productDetails = await hubspot.post(
-//       `/crm/v3/objects/products/batch/read`,
-//       {
-//         properties: ["name", "price", "sku", "ns_item_id"],
-//         inputs: productIds.map((id: string) => ({ id })),
-//       }
-//     );
-
-//     const productMap: Record<string, any> = {};
-//     productDetails.data.results.forEach((p: any) => {
-//       productMap[p.id] = {
-//         ...p.properties,
-//         ns_item_id: p.properties.ns_item_id, //  explicitly carry this over
-//       };
-//     });
-
-//     const final = items.map((item: any) => {
-//       const product = productMap[item.productId] || {};
-//       const unitPrice = Number(product.price) || 0;
-
-//       return {
-//         id: item.id,
-//         sku: item.sku || product.sku,
-//         productName: product.name,
-//         quantity: item.quantity,
-//         unitPrice,
-//         total: unitPrice * item.quantity,
-//         lineItemId: item.id,
-//         ns_item_id: product.ns_item_id,
-//         productId: item.productId,
-//         unitDiscount: item.discountFlat || item.discountPercent || 0,
-//         totalDiscount: item.totalDiscount,
-//         preDiscountAmount: item.preDiscountAmount,
-//         discountType: item.discountFlat
-//           ? "flat"
-//           : item.discountPercent
-//           ? "percent"
-//           : "none",
-//       };
-//     });
-
-//     return new Response(JSON.stringify(final), { status: 200 });
-//   } catch (err: any) {
-//     console.error(
-//       "Line item fetch failed:",
-//       err?.response?.data || err.message
-//     );
-//     return new Response(JSON.stringify({ error: "Fetch failed" }), {
-//       status: 500,
-//     });
-//   }
-// }
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url!);
   const dealId = searchParams.get("dealId");
@@ -131,6 +22,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const dealResp = await hubspot.get(`/crm/v3/objects/deals/${dealId}`, {
+      params: {
+        properties:
+          "sales_channel,sales_channel_id,affiliate_id,affiliate_name",
+      },
+    });
+    const dealProps = dealResp.data?.properties ?? {};
+    const salesChannel = dealProps.sales_channel ?? null;
+    const salesChannelId = dealProps.sales_channel_id ?? null;
+    const affiliateId = dealProps.affiliate_id ?? null;
+    const affiliateName = dealProps.affiliate_name ?? null;
     // 1. Fetch associated line items
     const associations = await hubspot.get(
       `/crm/v3/objects/deals/${dealId}/associations/line_items`
@@ -138,7 +40,18 @@ export async function GET(req: NextRequest) {
 
     const lineItemIds = associations.data.results.map((r: any) => r.id);
     if (lineItemIds.length === 0) {
-      return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          items: [],
+          salesChannel,
+          salesChannelId,
+          affiliateId,
+          affiliateName,
+        }),
+        {
+          status: 200,
+        }
+      );
     }
 
     // 2. Fetch line item details
@@ -300,7 +213,18 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(
+      JSON.stringify({
+        items: results,
+        salesChannel,
+        salesChannelId,
+        affiliateId,
+        affiliateName,
+      }),
+      {
+        status: 200,
+      }
+    );
   } catch (err: any) {
     console.error(
       "Line item fetch failed:",
@@ -316,13 +240,38 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { dealId, selectedProducts } = body;
+    const { dealId, selectedProducts, salesChannel, affiliate } = body;
 
     if (!dealId || !Array.isArray(selectedProducts)) {
       return new Response(
         JSON.stringify({ error: "Missing dealId or selectedProducts[]" }),
         { status: 400 }
       );
+    }
+    if (salesChannel) {
+      await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
+        properties: {
+          sales_channel: salesChannel.value,
+          sales_channel_id: salesChannel.id,
+        },
+      });
+      console.log(`  Updated deal ${dealId} sales_channel = "${salesChannel}"`);
+    }
+
+    if (affiliate) {
+      await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
+        properties: {
+          affiliate_id: String(affiliate.id),
+          affiliate_name: affiliate.name,
+        },
+      });
+      console.log(
+        `  Updated deal ${dealId} affiliate_id=${affiliate.id} affiliate_name="${affiliate.name}"`
+      );
+    } else if (affiliate === null) {
+      await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
+        properties: { affiliate_id: "", affiliate_name: "" },
+      });
     }
 
     console.log(" Syncing line items for deal", dealId);
@@ -356,7 +305,7 @@ export async function POST(req: NextRequest) {
           updated: true,
         });
       } else {
-        // 🔍 Fallback: find HubSpot product by ns_item_id
+        //  Fallback: find HubSpot product by ns_item_id
         const searchPayload = {
           filterGroups: [
             {
