@@ -10,7 +10,7 @@ import {
   getContactShippingAddress,
   isInternational,
 } from "../hubspot/checkShippingAddress";
-
+import https from "https";
 const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
 
@@ -388,13 +388,27 @@ async function applySalesOrderPatch(
 }
 
 async function createNewSalesOrder(payload, token) {
-  await axios.post(`${BASE_URL}/record/v1/salesOrder`, payload, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-  });
+  const hubspotSoId = payload?.custbodyhs_so_id;
+  const agent = new https.Agent({ keepAlive: false });
+  try {
+    await axios.post(`${BASE_URL}/record/v1/salesOrder`, payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      timeout: 30_000,
+      httpsAgent: agent,
+    });
+  } catch (e: any) {
+    if (!e.response || e.code === "ECONNRESET" || e.code === "ECONNABORTED") {
+      if (hubspotSoId) {
+        const id = await findSalesOrderByHubspotSoId(hubspotSoId, token);
+        if (id) return { id, created: true }; // request succeeded server-side
+      }
+    }
+    throw e;
+  }
 }
 
 async function fetchTranIdFromSO(id, token) {
@@ -425,7 +439,13 @@ function handleNetsuiteError(error: any) {
   } else {
     console.error("Error setting up request:", error.message);
   }
-  throw new Error(error.response?.data?.title || "Unknown error from NetSuite");
+  console.log("Unkown error details", error);
+  throw new Error(
+    error.response?.data?.title ||
+      error.message ||
+      error ||
+      "Unknown error from NetSuite"
+  );
 }
 
 async function findCustomerByHubspotId(hsId: string, token: string) {
