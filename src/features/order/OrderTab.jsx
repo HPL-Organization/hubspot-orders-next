@@ -28,6 +28,7 @@ const OrderTab = ({
   setNetsuiteInternalId,
   hasAnyFulfillment,
   onRepChange,
+  onHubspotStageClosedWonComplete,
 }) => {
   //make sure internal id loaded-
   if (netsuiteInternalId === undefined) {
@@ -1303,6 +1304,11 @@ const OrderTab = ({
                     stage: CLOSED_COMPLETE_STAGE,
                   }),
                 });
+                console.log(
+                  "onhubspot",
+                  onHubspotStageClosedWonComplete ? "present" : "not present"
+                );
+                onHubspotStageClosedWonComplete?.();
                 toast.success(
                   "Deal moved to 'Closed won - Complete' in HubSpot."
                 );

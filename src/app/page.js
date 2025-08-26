@@ -32,7 +32,11 @@ function App() {
   const [fulfillmentStatus, setFulfillmentStatus] = useState("loading");
   const [hasAnyFulfillment, setHasAnyFulfillment] = useState(null);
 
+  //deal stage states
   const [dealStage, setDealStage] = useState();
+  const [dealStageOverride, setDealStageOverride] = useState(null);
+  const effectiveDealStage = dealStageOverride ?? dealStage;
+  const CLOSED_WON_COMPLETE_ID = 34773430;
 
   const orderData = {
     orderNumber: netsuiteTranId || "No associated sales order",
@@ -239,6 +243,9 @@ function App() {
           setNetsuiteInternalId={setNetsuiteInternalId}
           hasAnyFulfillment={hasAnyFulfillment}
           onRepChange={handleRepChange}
+          onHubspotStageClosedWonComplete={() =>
+            setDealStageOverride(CLOSED_WON_COMPLETE_ID)
+          }
         />
       ),
     },
@@ -271,7 +278,7 @@ function App() {
         orderData={orderData}
         repOptions={repOptions}
         onRepChange={handleRepChange}
-        dealStage={dealStage}
+        dealStage={effectiveDealStage}
       />
       <MainTabs tabs={tabs} />
     </div>
