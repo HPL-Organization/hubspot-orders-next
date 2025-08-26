@@ -43,7 +43,6 @@ export default function PaymentDialog({
     });
   }, [invoices]);
 
-  // Auto-prime first invoice/amount when dialog opens
   React.useEffect(() => {
     if (!open) return;
     if (!invoiceId && invoiceOptions[0]) {
@@ -65,13 +64,15 @@ export default function PaymentDialog({
 
     try {
       const sessionId = await ensureSession();
-      // Accept either instrumentId OR token
       const body = {
         sessionId,
         customerId,
-        invoiceId,
+        invoiceId, // VersaPay payload (string is fine for your API)
         amount: amt,
-        instrumentId: paymentSource?.instrumentId || undefined,
+        instrumentId:
+          paymentSource?.instrumentId != null
+            ? Number(paymentSource.instrumentId)
+            : undefined,
         token: paymentSource?.token || undefined,
       };
 
@@ -85,7 +86,36 @@ export default function PaymentDialog({
         throw new Error(data?.message || "Payment failed");
       }
 
-      onPaid && onPaid(data);
+      const externalId =
+        data?.payment?.transactionId ||
+        data?.transactionId ||
+        data?.id ||
+        `vp_${Date.now()}`;
+
+      const rpRes = await fetch("/api/netsuite/record-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceInternalId: Number(invoiceId),
+          amount: amt,
+          undepFunds: true,
+          paymentOptionId:
+            paymentSource?.instrumentId != null
+              ? Number(paymentSource.instrumentId)
+              : undefined,
+          memo: "VersaPay payment",
+          externalId,
+          trandate: new Date().toISOString().slice(0, 10),
+        }),
+      });
+      const rpJson = await rpRes.json().catch(() => ({}));
+      if (!rpRes.ok) {
+        throw new Error(
+          rpJson?.details || rpJson?.error || "Failed to record payment"
+        );
+      }
+
+      onPaid && onPaid({ versaPay: data, netsuite: rpJson });
       onClose && onClose();
     } catch (e) {
       setError(e?.message || "Payment failed");

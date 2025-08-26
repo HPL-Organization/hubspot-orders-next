@@ -13,6 +13,7 @@ export async function POST(req: Request) {
     }
 
     const data = await getPaymentMethod(Number(customerInternalId));
+    console.log("get payment data shape check", data);
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
     console.error("Error fetching payment methods:", error);

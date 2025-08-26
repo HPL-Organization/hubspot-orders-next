@@ -95,6 +95,8 @@ const OrderTab = ({
   const defaultSalesRepId =
     repOptions.find((r) => r.email === repEmail)?.id || "-5"; // fallback
 
+  const CLOSED_COMPLETE_STAGE = "34773430";
+
   const memoizedProductCatalog = useMemo(
     () => productCatalog,
     [productCatalog]
@@ -1291,6 +1293,21 @@ const OrderTab = ({
               if (data?.netsuiteTranId) {
                 console.log(data.netsuiteTranId);
                 setNetsuiteTranId(data.netsuiteTranId);
+              }
+              try {
+                await fetch("/api/hubspot/set-deal-stage", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    dealId,
+                    stage: CLOSED_COMPLETE_STAGE,
+                  }),
+                });
+                toast.success(
+                  "Deal moved to 'Closed won - Complete' in HubSpot."
+                );
+              } catch (e) {
+                console.error("Failed to update HubSpot dealstage", e);
               }
             } catch (err) {
               console.error(" Sales Order creation failed:", err);
