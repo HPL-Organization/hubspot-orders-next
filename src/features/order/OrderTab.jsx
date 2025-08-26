@@ -1255,7 +1255,7 @@ const OrderTab = ({
                   replaceAll: true,
                   items: formattedSalesTeam,
                 },
-                salesChannel: selectedSalesChannel.id ?? null,
+                salesChannel: selectedSalesChannel?.id ?? null,
                 affiliateId:
                   selectedAffiliate && !isNoAffiliate(selectedAffiliate)
                     ? selectedAffiliate.id
