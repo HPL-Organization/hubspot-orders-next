@@ -14,6 +14,7 @@ export async function POST(req: Request) {
       salesChannel,
       affiliateId,
       salesOrderDate,
+      dealName,
     } = body;
 
     if (!hubspotSoId || !hubspotContactId || !Array.isArray(lineItems)) {
@@ -31,7 +32,8 @@ export async function POST(req: Request) {
       salesTeam,
       salesChannel,
       affiliateId,
-      salesOrderDate ?? null
+      salesOrderDate ?? null,
+      dealName
     );
     return new Response(JSON.stringify(result), { status: 200 });
   } catch (err: any) {

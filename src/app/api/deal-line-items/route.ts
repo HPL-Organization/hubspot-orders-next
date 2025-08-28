@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const dealResp = await hubspot.get(`/crm/v3/objects/deals/${dealId}`, {
       params: {
         properties:
-          "sales_channel,sales_channel_id,affiliate_id,affiliate_name,hpl_ns_so_date",
+          "sales_channel,sales_channel_id,affiliate_id,affiliate_name,hpl_ns_so_date,dealname",
       },
     });
     const dealProps = dealResp.data?.properties ?? {};
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     const affiliateId = dealProps.affiliate_id ?? null;
     const affiliateName = dealProps.affiliate_name ?? null;
     const salesOrderDate = dealProps.hpl_ns_so_date ?? null;
+    const dealName = dealProps.dealname ?? null;
     // 1. Fetch associated line items
     const associations = await hubspot.get(
       `/crm/v3/objects/deals/${dealId}/associations/line_items`
@@ -49,6 +50,7 @@ export async function GET(req: NextRequest) {
           affiliateId,
           affiliateName,
           salesOrderDate,
+          dealName,
         }),
         {
           status: 200,
@@ -222,6 +224,7 @@ export async function GET(req: NextRequest) {
         salesChannelId,
         affiliateId,
         affiliateName,
+        dealName,
       }),
       {
         status: 200,

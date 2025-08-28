@@ -42,7 +42,8 @@ export async function createNetsuiteSalesOrder(
   },
   salesChannelId?: string | null,
   affiliateId?: string | null,
-  salesOrderDate?: string | null
+  salesOrderDate?: string | null,
+  dealName?: string | null
 ) {
   const accessToken = await getValidToken();
   const resolvedSalesChannelId =
@@ -79,7 +80,8 @@ export async function createNetsuiteSalesOrder(
     lineItems,
     resolvedSalesChannelId,
     resolvedAffiliateId,
-    createTrandate
+    createTrandate,
+    dealName
   );
 
   try {
@@ -116,7 +118,8 @@ export async function createNetsuiteSalesOrder(
         accessToken,
         resolvedSalesChannelId,
         resolvedAffiliateId,
-        patchTrandate
+        patchTrandate,
+        dealName
       );
     } else {
       //console.log("not Existing", existingSOId);
@@ -148,7 +151,8 @@ function buildBasePayload(
   lineItems: any[],
   salesChannelId: string,
   affiliateId: string | null,
-  trandate: string
+  trandate: string,
+  dealName: string | null
 ) {
   return {
     entity: { id: customerId },
@@ -160,6 +164,9 @@ function buildBasePayload(
     salesTeam,
     shipcomplete: shipComplete,
     trandate,
+
+    custbody_hpl_hs_deal_name: dealName,
+
     ...(affiliateId ? { partner: { id: affiliateId } } : {}),
     ...(affiliateId
       ? {
@@ -371,7 +378,8 @@ async function applySalesOrderPatch(
   token: string,
   salesChannelId: string,
   affiliateId: string | null,
-  trandate?: string
+  trandate?: string,
+  dealName?: string | null
 ) {
   // const body: any = {
   //   shipcomplete: shipComplete,
@@ -396,6 +404,9 @@ async function applySalesOrderPatch(
   if (trandate) {
     console.log("[PATCH SO] setting trandate =", trandate);
     body.trandate = trandate;
+  }
+  if (typeof dealName === "string" && dealName.length > 0) {
+    body.custbody_hpl_hs_deal_name = dealName;
   }
   console.log("sending body", body);
 

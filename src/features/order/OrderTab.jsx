@@ -73,6 +73,9 @@ const OrderTab = ({
   // SO date
   const [salesOrderDate, setSalesOrderDate] = useState("");
 
+  //deal name
+  const [dealName, setDealName] = useState(null);
+
   const [rows, setRows] = useState([]);
   const [selectedGridProducts, setSelectedGridProducts] = useState([]);
   const searchParams = useSearchParams();
@@ -303,6 +306,8 @@ const OrderTab = ({
             value: data?.salesChannel ?? null,
           });
         }
+        setDealName(data?.dealName ?? null);
+        console.log("Deal name", dealName);
         if (data?.affiliateId || data?.affiliateName) {
           setInitialAffiliateFromDeal({
             id: data?.affiliateId ? String(data.affiliateId) : null,
@@ -1215,7 +1220,7 @@ const OrderTab = ({
             }
             if (netsuiteInternalId === null) {
               const confirmCreate = await confirmToast(
-                "No NetSuite Sales Order exists yet. Have you checked the contact info is updated?"
+                "Please make sure you saved the customer in netsuite!"
               );
               if (!confirmCreate) return;
             }
@@ -1286,6 +1291,7 @@ const OrderTab = ({
                     ? selectedAffiliate.id
                     : null,
                 salesOrderDate: salesOrderDate || null,
+                dealName: dealName,
                 //unfulfilledLines,
                 //fulfilledLinesToEdit,
               };
