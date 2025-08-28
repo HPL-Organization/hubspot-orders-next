@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const dealResp = await hubspot.get(`/crm/v3/objects/deals/${dealId}`, {
       params: {
         properties:
-          "sales_channel,sales_channel_id,affiliate_id,affiliate_name",
+          "sales_channel,sales_channel_id,affiliate_id,affiliate_name,hpl_ns_so_date",
       },
     });
     const dealProps = dealResp.data?.properties ?? {};
@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     const salesChannelId = dealProps.sales_channel_id ?? null;
     const affiliateId = dealProps.affiliate_id ?? null;
     const affiliateName = dealProps.affiliate_name ?? null;
+    const salesOrderDate = dealProps.hpl_ns_so_date ?? null;
     // 1. Fetch associated line items
     const associations = await hubspot.get(
       `/crm/v3/objects/deals/${dealId}/associations/line_items`
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
           salesChannelId,
           affiliateId,
           affiliateName,
+          salesOrderDate,
         }),
         {
           status: 200,
@@ -240,7 +242,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { dealId, selectedProducts, salesChannel, affiliate } = body;
+    const {
+      dealId,
+      selectedProducts,
+      salesChannel,
+      affiliate,
+      salesOrderDate,
+    } = body;
 
     if (!dealId || !Array.isArray(selectedProducts)) {
       return new Response(
@@ -272,6 +280,26 @@ export async function POST(req: NextRequest) {
       await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
         properties: { affiliate_id: "", affiliate_name: "" },
       });
+    }
+    console.log("sales order date check", salesOrderDate);
+    if (salesOrderDate !== undefined) {
+      const isYMD = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const value =
+        typeof salesOrderDate === "string" && isYMD(salesOrderDate)
+          ? salesOrderDate
+          : "";
+
+      try {
+        await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
+          properties: { hpl_ns_so_date: value },
+        });
+        console.log(`  Updated deal ${dealId} hpl_ns_so_date="${value}"`);
+      } catch (e: any) {
+        console.warn(
+          "Warning: failed to set hpl_ns_so_date (property may not exist):",
+          e?.response?.data || e?.message
+        );
+      }
     }
 
     console.log(" Syncing line items for deal", dealId);

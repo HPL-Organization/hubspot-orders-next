@@ -3,7 +3,7 @@ import { createNetsuiteCustomer } from "../../../../../lib/netsuite/createNetsui
 
 export async function POST(req: NextRequest) {
   try {
-    const customer = await req.json(); // ← uses payload from frontend
+    const customer = await req.json();
 
     const result = await createNetsuiteCustomer(customer);
     return new Response(JSON.stringify({ success: true, result }), {

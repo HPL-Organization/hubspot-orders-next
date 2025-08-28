@@ -13,7 +13,16 @@ import {
   Divider,
   Stack,
   Alert,
+  Tooltip,
+  IconButton,
+  TextField,
+  InputAdornment,
+  Link,
 } from "@mui/material";
+import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
+import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 
 import AddPaymentMethod from "../../../components/Versapay/AddPaymentMethod";
 import PaymentMethods from "../../../components/Versapay/PaymentMethods";
@@ -36,6 +45,17 @@ const PaymentTab = ({ netsuiteInternalId }) => {
   const [submittingFull, setSubmittingFull] = useState(false);
   const [fullError, setFullError] = useState(null);
   const [fullSuccess, setFullSuccess] = useState(null);
+
+  //  invoice generation states
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const [genSuccess, setGenSuccess] = useState(null);
+
+  //date states
+  const [invoiceDates, setInvoiceDates] = useState({}); // { [invoiceId]: 'YYYY-MM-DD' }
+  const [savingDateId, setSavingDateId] = useState(null);
+  const [originalInvoiceDates, setOriginalInvoiceDates] = useState({});
+  const [dateSaveState, setDateSaveState] = useState({});
 
   const uniqueInvoicesMap = new Map();
   invoices.forEach((inv) => {
@@ -69,7 +89,84 @@ const PaymentTab = ({ netsuiteInternalId }) => {
     refreshInvoices();
   }, [refreshInvoices]);
 
+  //date useeffect
+  useEffect(() => {
+    if (!invoices?.length) return;
+    const map = {};
+    for (const inv of invoices) {
+      const id = inv?.invoiceId ?? inv?.id ?? inv?.internalId;
+      if (!id) continue;
+      const raw = inv?.trandate || inv?.tranDate || inv?.date || "";
+      const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+        ? raw
+        : (raw || "").slice(0, 10);
+      if (iso) map[id] = iso;
+    }
+    setInvoiceDates((prev) => ({ ...map, ...prev }));
+    setOriginalInvoiceDates(map);
+  }, [invoices]);
+
   const customerId = invoices?.[0]?.customerId ?? null;
+  const hasInvoice = uniqueInvoices.length > 0;
+
+  // date save helper
+  const saveInvoiceDate = async (id) => {
+    const value = invoiceDates[id];
+    try {
+      setSavingDateId(id);
+      const res = await fetch(`/api/netsuite/invoices`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: Number(id), trandate: value }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to save date");
+      setOriginalInvoiceDates((m) => ({ ...m, [id]: value }));
+      await refreshInvoices();
+    } catch (e) {
+      console.error("Save invoice date failed:", e);
+      alert(e?.message || String(e));
+    } finally {
+      setSavingDateId(null);
+    }
+  };
+
+  //  generate invoice handler
+  const handleGenerateInvoice = async () => {
+    if (!netsuiteInternalId) return;
+    setGenError(null);
+    setGenSuccess(null);
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/netsuite/make-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          salesOrderInternalId: Number(netsuiteInternalId),
+          overrides: { memo: "Created from PaymentTab" },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          json?.details || json?.error || "Failed to create invoice"
+        );
+      }
+
+      setGenSuccess(
+        `Invoice ${
+          json?.invoiceInternalId ? "#" + json.invoiceInternalId + " " : ""
+        }created successfully.`
+      );
+
+      await refreshInvoices();
+    } catch (e) {
+      console.error(e);
+      setGenError(e?.message || String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   async function recordPaymentAgainstInvoice(opts) {
     console.log("Attempting to record payment", opts);
@@ -209,8 +306,22 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         gap={2}
         alignItems="center"
         justifyContent="flex-start"
-        mb={4}
+        mb={2}
       >
+        {/*  Generate Invoice button */}
+        <Button
+          variant="contained"
+          color="secondary"
+          onClick={handleGenerateInvoice}
+          disabled={generating || hasInvoice || !netsuiteInternalId}
+        >
+          {generating
+            ? "Generating..."
+            : hasInvoice
+            ? "Invoice Exists"
+            : "Generate Invoice"}
+        </Button>
+
         <Button
           variant="outlined"
           onClick={() => {
@@ -235,18 +346,120 @@ const PaymentTab = ({ netsuiteInternalId }) => {
 
         {!customerId && (
           <Typography variant="body2" color="text.secondary">
-            (Customer not loaded yet — buttons enabled once invoices load.)
+            (No Invoices for this Sales order yet — buttons enabled once
+            invoices load.)
           </Typography>
         )}
       </Box>
 
+      {genError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {genError}
+        </Alert>
+      )}
+      {genSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {genSuccess}
+        </Alert>
+      )}
+
       <h1 className="text-2xl font-bold mb-4 text-black">Invoices</h1>
       {invoices.length > 0 ? (
-        <InvoiceGrid
-          invoices={invoices}
-          netsuiteInternalId={netsuiteInternalId}
-          productCatalog={[]}
-        />
+        <>
+          <Box sx={{ mb: 1 }}>
+            {uniqueInvoices.map((inv) => {
+              const id = inv?.invoiceId ?? inv?.id ?? inv?.internalId;
+              const tranId = inv?.tranId ?? `#${id}`;
+              const value = invoiceDates[id] || "";
+              const orig = originalInvoiceDates[id] || "";
+              const changed = value && value !== orig;
+              const state = dateSaveState[id] || "idle";
+
+              return (
+                <Box
+                  key={id}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                    py: 0.5,
+                    px: 1,
+                    mb: 0.75,
+                    borderRadius: 1.5,
+                    bgcolor: "grey.50",
+                    border: "1px solid",
+                    borderColor: "grey.200",
+                  }}
+                >
+                  <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                    Invoice{" "}
+                    <Link
+                      underline="hover"
+                      sx={{ fontWeight: 600, cursor: "default" }}
+                    >
+                      {tranId}
+                    </Link>
+                  </Typography>
+
+                  <TextField
+                    type="date"
+                    value={value}
+                    onChange={(e) =>
+                      setInvoiceDates((m) => ({ ...m, [id]: e.target.value }))
+                    }
+                    size="small"
+                    sx={{ minWidth: 160, ml: 1 }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <CalendarMonthOutlinedIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+
+                  <Box
+                    sx={{ ml: "auto", display: "flex", alignItems: "center" }}
+                  >
+                    {state === "saved" ? (
+                      <Tooltip title="Saved">
+                        <CheckCircleOutlineIcon
+                          color="success"
+                          fontSize="small"
+                        />
+                      </Tooltip>
+                    ) : state === "error" ? (
+                      <Tooltip title="Error saving">
+                        <ErrorOutlineIcon color="error" fontSize="small" />
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title={changed ? "Save date" : "No changes"}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={!changed || state === "saving"}
+                            onClick={() => saveInvoiceDate(id)}
+                          >
+                            {state === "saving" ? (
+                              <CircularProgress size={16} />
+                            ) : (
+                              <SaveOutlinedIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+          <InvoiceGrid
+            invoices={invoices}
+            netsuiteInternalId={netsuiteInternalId}
+            productCatalog={[]}
+          />
+        </>
       ) : (
         <div>No invoices related to this sales order.</div>
       )}
@@ -274,7 +487,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
             <Typography variant="body2" color="text.secondary">
               We’ll collect an initial <strong>10% deposit</strong> against this
               Sales Order now. When the order is in stock, the remaining balance
-              will be collected automatically.
+              will be collected automatically (WIP).
             </Typography>
             <Divider />
             {PaymentMethodSection}

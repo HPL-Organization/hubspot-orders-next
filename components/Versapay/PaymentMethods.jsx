@@ -11,6 +11,7 @@ import {
 import Autocomplete from "@mui/material/Autocomplete";
 import PaymentDialog from "./MakePaymentDialog";
 import { useVersapaySession } from "../../src/hooks/useVersapaySession";
+import PaymentDialogOffline from "../PaymentDialogOffline";
 
 export default function PaymentMethods({
   customerId,
@@ -30,6 +31,9 @@ export default function PaymentMethods({
   const [paying, setPaying] = useState(false);
   const [invoiceId, setInvoiceId] = useState("");
   const [amount, setAmount] = useState("");
+
+  const [offlineMethods, setOfflineMethods] = useState([]);
+  const [offlineOpen, setOfflineOpen] = useState(false);
 
   const { ensure: ensureVersapaySession, reset: resetVersapaySession } =
     useVersapaySession();
@@ -60,9 +64,13 @@ export default function PaymentMethods({
         throw new Error(data?.message || "Failed to fetch payment methods");
       }
       setInstruments(data.instruments || []);
+      const pmRes = await fetch("/api/netsuite/get-offline-payment-method");
+      const pmJson = await pmRes.json();
+      setOfflineMethods(pmJson?.methods || []);
     } catch (e) {
       setError(e?.message || "Failed to fetch payment methods");
       setInstruments([]);
+      setOfflineMethods([]);
     } finally {
       setLoading(false);
     }
@@ -72,11 +80,13 @@ export default function PaymentMethods({
     if (customerId) load();
   }, [customerId, refreshKey]);
 
-  useEffect(() => {
-    if (selectedId && !instruments.some((pm) => pm.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [instruments, selectedId]);
+  // useEffect(() => {
+  //   if (selectedId && !instruments.some((pm) => pm.id === selectedId)) {
+  //     setSelectedId(null);
+  //   }
+  // }, [instruments, selectedId]);
+
+  // If current selection disappears from BOTH lists, clear it; otherwise keep it.
 
   const invoiceOptions = useMemo(() => {
     return (invoices || []).map((inv) => {
@@ -88,7 +98,6 @@ export default function PaymentMethods({
     });
   }, [invoices]);
 
-  // Build richer option objects for better rendering
   const instrumentOptions = useMemo(
     () =>
       instruments.map((pm) => {
@@ -112,23 +121,69 @@ export default function PaymentMethods({
           last4: pm.last4 ?? null,
           expiry: formattedExpiry ?? null,
           tokenFamily: pm.tokenFamily ?? null,
+          kind: "token",
         };
       }),
     [instruments]
   );
 
+  const offlineOptions = useMemo(
+    () =>
+      (offlineMethods || [])
+        .filter(
+          (m) =>
+            !/^\s*general\s+token\s*$/i.test(m.name) &&
+            !/^\s*payment\s*card\s*token\s*$/i.test(m.name)
+        )
+        .map((m) => ({
+          id: String(m.id),
+          title: m.name,
+          brand: null,
+          last4: null,
+          expiry: null,
+          tokenFamily: m.defaultAccountName ? m.defaultAccountName : "Offline",
+          kind: "offline",
+          _ns: {
+            undepositedDefault: m.undepositedDefault,
+            defaultAccountId: m.defaultAccountId,
+            defaultAccountName: m.defaultAccountName,
+          },
+        })),
+    [offlineMethods]
+  );
+  const allOptions = useMemo(
+    () => [...instrumentOptions, ...offlineOptions],
+    [instrumentOptions, offlineOptions]
+  );
+
+  // const selectedOption = useMemo(
+  //   () => instrumentOptions.find((o) => o.id === selectedId) ?? null,
+  //   [instrumentOptions, selectedId]
+  // );
+  useEffect(() => {
+    if (selectedId && !allOptions.some((o) => o.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [allOptions, selectedId]);
+
   const selectedOption = useMemo(
-    () => instrumentOptions.find((o) => o.id === selectedId) ?? null,
-    [instrumentOptions, selectedId]
+    () => allOptions.find((o) => o.id === selectedId) ?? null,
+    [allOptions, selectedId]
   );
 
   async function handleMakePayment() {
     if (!customerId || !selectedId) return;
-    setPayOpen(true);
+    const sel = selectedOption;
+    if (!sel) return;
     const first = invoiceOptions[0];
     if (first) {
       setInvoiceId(first.id);
       if (first.due != null) setAmount(String(first.due));
+    }
+    if (sel.kind === "token") {
+      setPayOpen(true);
+    } else {
+      setOfflineOpen(true);
     }
   }
 
@@ -218,7 +273,6 @@ export default function PaymentMethods({
           </Button>
         </Box>
       </Box>
-
       {loading ? (
         <Box display="flex" alignItems="center" gap={2} mt={1}>
           <CircularProgress size={20} />
@@ -240,7 +294,10 @@ export default function PaymentMethods({
           <Autocomplete
             size="small"
             fullWidth
-            options={instrumentOptions}
+            options={allOptions}
+            groupBy={(o) =>
+              o.kind === "token" ? "Saved tokens" : "Offline methods"
+            }
             value={selectedOption}
             onChange={(_, val) => {
               const id = val?.id ?? null;
@@ -248,14 +305,12 @@ export default function PaymentMethods({
               onSelect && onSelect(id);
             }}
             isOptionEqualToValue={(o, v) => o.id === v.id}
-            // Compact single-line in the input itself
             getOptionLabel={(o) =>
               [o.title, o.brand, o.last4 ? `•••• ${o.last4}` : null]
                 .filter(Boolean)
                 .join(" · ")
             }
             noOptionsText="No payment methods available"
-            // Make the input a bit taller and add spacing above
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -265,11 +320,10 @@ export default function PaymentMethods({
                 }
                 sx={{
                   mt: 1,
-                  "& .MuiInputBase-root": { py: 1.25 }, // taller control
+                  "& .MuiInputBase-root": { py: 1.25 },
                 }}
               />
             )}
-            // Better, multi-line option layout
             renderOption={(props, option) => (
               <li {...props}>
                 <Box
@@ -321,11 +375,10 @@ export default function PaymentMethods({
             PaperProps={{
               elevation: 3,
             }}
-            disabled={!instrumentOptions.length}
+            disabled={!allOptions.length}
           />
         </>
       )}
-
       <PaymentDialog
         open={payOpen}
         onClose={() => setPayOpen(false)}
@@ -345,6 +398,26 @@ export default function PaymentMethods({
         setInvoiceId={setInvoiceId}
         amount={amount}
         setAmount={setAmount}
+      />
+      {/*  Offline dialog */}
+      <PaymentDialogOffline
+        open={offlineOpen}
+        onClose={() => setOfflineOpen(false)}
+        invoices={invoices}
+        invoiceId={invoiceId}
+        setInvoiceId={setInvoiceId}
+        customerId={customerId}
+        amount={amount}
+        setAmount={setAmount}
+        selectedMethod={
+          selectedOption?.kind === "offline" ? selectedOption : null
+        }
+        onRecorded={(data) => {
+          setOfflineOpen(false);
+          setAmount("");
+          setInvoiceId("");
+          onPaid && onPaid(data);
+        }}
       />
     </Box>
   );

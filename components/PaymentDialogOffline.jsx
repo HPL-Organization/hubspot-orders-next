@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React from "react";
 import {
   Dialog,
   DialogTitle,
@@ -15,25 +15,26 @@ import {
   Button,
 } from "@mui/material";
 
-export default function PaymentDialog({
+export default function PaymentDialogOffline({
   open,
   onClose,
   invoices = [],
   defaultInvoiceId,
   defaultAmount,
-  ensureSession,
   customerId,
-  paymentSource,
+
+  selectedMethod,
+  defaultPaymentOptionId,
   onPaid,
 }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [invoiceId, setInvoiceId] = useState(defaultInvoiceId || "");
-  const [amount, setAmount] = useState(
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [invoiceId, setInvoiceId] = React.useState(defaultInvoiceId || "");
+  const [amount, setAmount] = React.useState(
     defaultAmount != null ? String(defaultAmount) : ""
   );
 
-  const invoiceOptions = useMemo(() => {
+  const invoiceOptions = React.useMemo(() => {
     return (invoices || []).map((inv) => {
       const id = inv?.invoiceId ?? inv?.id ?? String(inv?.tranId ?? "");
       const labelBase = inv?.tranId || id;
@@ -53,72 +54,64 @@ export default function PaymentDialog({
   }, [open, invoiceId, invoiceOptions]);
 
   async function submitPayment() {
+    console.log("Hello?", customerId, invoiceId);
     if (!customerId || !invoiceId || !amount) return;
+
     const amt = Number(amount);
     if (!(amt > 0)) {
       setError("Amount must be greater than 0");
       return;
     }
+
+    if (!selectedMethod || selectedMethod.kind !== "offline") {
+      setError("Please select an offline payment method.");
+      return;
+    }
+
+    const accountId = selectedMethod?._ns?.defaultAccountId;
+    if (!accountId) {
+      setError(
+        "Selected payment method has no 'Deposit To' account in NetSuite."
+      );
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     try {
-      const sessionId = await ensureSession();
       const body = {
-        sessionId,
-        customerId,
-        invoiceId, // VersaPay payload
+        invoiceInternalId: Number(invoiceId),
         amount: amt,
-        instrumentId:
-          paymentSource?.instrumentId != null
-            ? Number(paymentSource.instrumentId)
-            : undefined,
-        token: paymentSource?.token || undefined,
+        undepFunds: false,
+        accountId: Number(accountId),
+        paymentMethodId: Number(selectedMethod.id),
+        paymentOptionId: Number(selectedMethod.id),
+        ...(defaultPaymentOptionId
+          ? { paymentOptionId: Number(defaultPaymentOptionId) }
+          : {}),
+        memo: `Offline payment (${selectedMethod.title})`,
+        trandate: new Date().toISOString().slice(0, 10),
       };
+      console.log(body);
 
-      const res = await fetch("/api/versapay/make-payment", {
+      const res = await fetch("/api/netsuite/record-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok || data?.success === false) {
-        throw new Error(data?.message || "Payment failed");
-      }
 
-      const externalId =
-        data?.payment?.transactionId ||
-        data?.transactionId ||
-        data?.id ||
-        `vp_${Date.now()}`;
-
-      const rpRes = await fetch("/api/netsuite/record-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceInternalId: Number(invoiceId),
-          amount: amt,
-          undepFunds: true,
-          paymentOptionId:
-            paymentSource?.instrumentId != null
-              ? Number(paymentSource.instrumentId)
-              : undefined,
-          memo: "VersaPay payment",
-          externalId,
-          trandate: new Date().toISOString().slice(0, 10),
-        }),
-      });
-      const rpJson = await rpRes.json().catch(() => ({}));
-      if (!rpRes.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok !== true) {
         throw new Error(
-          rpJson?.details || rpJson?.error || "Failed to record payment"
+          data?.details || data?.error || "Failed to record payment"
         );
       }
 
-      onPaid && onPaid({ versaPay: data, netsuite: rpJson });
+      onPaid && onPaid({ netsuite: data });
       onClose && onClose();
     } catch (e) {
-      setError(e?.message || "Payment failed");
+      setError(e?.message || "Failed to record payment");
     } finally {
       setSubmitting(false);
     }
@@ -131,8 +124,18 @@ export default function PaymentDialog({
       fullWidth
       maxWidth="sm"
     >
-      <DialogTitle>Make a Payment</DialogTitle>
+      <DialogTitle>Record Offline Payment</DialogTitle>
       <DialogContent>
+        {/* Method summary */}
+        {selectedMethod && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Method: <strong>{selectedMethod.title}</strong>
+            {selectedMethod?._ns?.defaultAccountName
+              ? ` · Deposit To: ${selectedMethod._ns.defaultAccountName}`
+              : ""}
+          </Typography>
+        )}
+
         <FormControl fullWidth size="small" margin="dense">
           <InputLabel id="invoice-select-label">Invoice</InputLabel>
           <Select
@@ -175,7 +178,7 @@ export default function PaymentDialog({
           onClick={submitPayment}
           disabled={submitting || !invoiceId || !amount}
         >
-          {submitting ? "Processing…" : "Pay"}
+          {submitting ? "Saving…" : "Record Payment"}
         </Button>
       </DialogActions>
     </Dialog>

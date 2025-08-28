@@ -70,6 +70,9 @@ const OrderTab = ({
     { id: "-5", isPrimary: true, contribution: 100 },
   ]);
 
+  // SO date
+  const [salesOrderDate, setSalesOrderDate] = useState("");
+
   const [rows, setRows] = useState([]);
   const [selectedGridProducts, setSelectedGridProducts] = useState([]);
   const searchParams = useSearchParams();
@@ -306,6 +309,12 @@ const OrderTab = ({
             name: data?.affiliateName ?? null,
           });
         }
+        if (
+          data?.salesOrderDate &&
+          /^\d{4}-\d{2}-\d{2}$/.test(data.salesOrderDate)
+        ) {
+          setSalesOrderDate(data.salesOrderDate);
+        }
       } catch (err) {
         console.error("Failed to fetch existing line items:", err);
       }
@@ -537,6 +546,7 @@ const OrderTab = ({
         body: JSON.stringify({
           dealId,
           salesChannel: selectedSalesChannel ?? null,
+          salesOrderDate: salesOrderDate || null,
           affiliate:
             selectedAffiliate && !isNoAffiliate(selectedAffiliate)
               ? {
@@ -1164,8 +1174,22 @@ const OrderTab = ({
               {...params}
               label="Affiliate"
               placeholder="Select affiliate"
+              helperText="Optional"
             />
           )}
+        />
+      </Box>
+      {/* Sales Order Date */}
+      <Box sx={{ mt: 3, mb: 2, maxWidth: 260 }}>
+        <TextField
+          label="Sales Order Date"
+          type="date"
+          value={salesOrderDate}
+          onChange={(e) => setSalesOrderDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          helperText="Optional"
+          size="small"
+          fullWidth
         />
       </Box>
       {/* Save Buttons */}
@@ -1261,6 +1285,7 @@ const OrderTab = ({
                   selectedAffiliate && !isNoAffiliate(selectedAffiliate)
                     ? selectedAffiliate.id
                     : null,
+                salesOrderDate: salesOrderDate || null,
                 //unfulfilledLines,
                 //fulfilledLinesToEdit,
               };

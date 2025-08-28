@@ -1,8 +1,12 @@
 // lib/netsuite/createNetsuiteCustomer.ts
 import { getValidToken } from "./token";
 import axios from "axios";
-
-const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
+const NS_ENV = process.env.NETSUITE_ENV?.toLowerCase() || "prod";
+const isSB = NS_ENV === "sb";
+const NETSUITE_ACCOUNT_ID = isSB
+  ? process.env.NETSUITE_ACCOUNT_ID_SB!
+  : process.env.NETSUITE_ACCOUNT_ID!;
+//const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
 
 const COUNTRY_CODES: Record<string, string> = {

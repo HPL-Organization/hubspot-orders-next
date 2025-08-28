@@ -500,10 +500,6 @@ const InvoiceGrid = ({ invoices, netsuiteInternalId, productCatalog = [] }) => {
 
   return (
     <Box sx={{ mt: 4 }}>
-      <h2 className="text-xl font-semibold text-black mb-4">
-        Related Invoices
-      </h2>
-
       {uniqueInvoices.map((inv) => {
         const invoiceRows =
           inv.lines?.map((line, index) => ({

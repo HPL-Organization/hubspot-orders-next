@@ -8,14 +8,25 @@
 import axios from "axios";
 import { SignJWT, importPKCS8 } from "jose";
 //import "dotenv/config";
-
-// Load env vars from process.env
-const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
-const CONSUMER_KEY = process.env.NETSUITE_CONSUMER_KEY!;
-const PRIVATE_KEY_PEM = process.env.NETSUITE_PRIVATE_KEY!.replace(/\\n/g, "\n");
-//console.log("PRIVATE KEY STARTS WITH:", PRIVATE_KEY_PEM.slice(0, 30));
-
-const CERTIFICATE_ID = process.env.NETSUITE_CERTIFICATE_ID; // optional
+type NsEnv = "prod" | "sb";
+const NS_ENV: NsEnv =
+  (process.env.NETSUITE_ENV?.toLowerCase() as NsEnv) || "prod";
+const isSB = NS_ENV === "sb";
+console.log("isSB", isSB);
+const NETSUITE_ACCOUNT_ID = isSB
+  ? process.env.NETSUITE_ACCOUNT_ID_SB!
+  : process.env.NETSUITE_ACCOUNT_ID!;
+const CONSUMER_KEY = isSB
+  ? process.env.NETSUITE_CONSUMER_KEY_SB!
+  : process.env.NETSUITE_CONSUMER_KEY!;
+const PRIVATE_KEY_PEM = (
+  isSB
+    ? process.env.NETSUITE_PRIVATE_KEY_SB!
+    : process.env.NETSUITE_PRIVATE_KEY!
+).replace(/\\n/g, "\n");
+const CERTIFICATE_ID = isSB
+  ? process.env.NETSUITE_CERTIFICATE_ID_SB
+  : process.env.NETSUITE_CERTIFICATE_ID;
 
 const TOKEN_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`;
 

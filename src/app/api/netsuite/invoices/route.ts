@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import axios from "axios";
 import { getValidToken } from "../../../../../lib/netsuite/token";
 
-const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
+const NS_ENV = process.env.NETSUITE_ENV?.toLowerCase() || "prod";
+const isSB = NS_ENV === "sb";
+const NETSUITE_ACCOUNT_ID = isSB
+  ? process.env.NETSUITE_ACCOUNT_ID_SB!
+  : process.env.NETSUITE_ACCOUNT_ID!;
+//const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
 
 export async function GET(req: NextRequest) {
@@ -107,6 +112,7 @@ WHERE T.type = 'CustPymt'
       invoices.push({
         invoiceId: data.id,
         tranId: data.tranId,
+        trandate: data.tranDate,
         total: data.total,
         amountPaid: data.amountPaid,
         amountRemaining: data.amountRemaining,
@@ -125,5 +131,50 @@ WHERE T.type = 'CustPymt'
     return new Response(JSON.stringify({ error: "Could not load invoices" }), {
       status: 500,
     });
+  }
+}
+
+// patch for date update
+export async function PATCH(req: NextRequest) {
+  try {
+    const { invoiceId, invoiceInternalId, trandate } = await req.json();
+    const id = Number(invoiceId ?? invoiceInternalId);
+    if (!id) {
+      return new Response(JSON.stringify({ error: "Missing invoiceId" }), {
+        status: 400,
+      });
+    }
+    if (!trandate || !/^\d{4}-\d{2}-\d{2}$/.test(String(trandate))) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or missing trandate (YYYY-MM-DD)" }),
+        { status: 400 }
+      );
+    }
+
+    const token = await getValidToken();
+    await axios.patch(
+      `${BASE_URL}/record/v1/invoice/${id}`,
+      { trandate: String(trandate) },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    return new Response(JSON.stringify({ ok: true, invoiceId: id, trandate }), {
+      status: 200,
+    });
+  } catch (err: any) {
+    console.error(
+      " Failed to update invoice date:",
+      err?.response?.data || err?.message
+    );
+    return new Response(
+      JSON.stringify({ error: "Could not update invoice date" }),
+      { status: 500 }
+    );
   }
 }

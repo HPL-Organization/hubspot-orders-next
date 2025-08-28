@@ -11,7 +11,13 @@ import {
   isInternational,
 } from "../hubspot/checkShippingAddress";
 import https from "https";
-const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
+
+const NS_ENV = process.env.NETSUITE_ENV?.toLowerCase() || "prod";
+const isSB = NS_ENV === "sb";
+const NETSUITE_ACCOUNT_ID = isSB
+  ? process.env.NETSUITE_ACCOUNT_ID_SB!
+  : process.env.NETSUITE_ACCOUNT_ID!;
+//const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
 
 // Main export
@@ -35,7 +41,8 @@ export async function createNetsuiteSalesOrder(
     }[];
   },
   salesChannelId?: string | null,
-  affiliateId?: string | null
+  affiliateId?: string | null,
+  salesOrderDate?: string | null
 ) {
   const accessToken = await getValidToken();
   const resolvedSalesChannelId =
@@ -44,7 +51,11 @@ export async function createNetsuiteSalesOrder(
     affiliateId != null && String(affiliateId).trim() !== ""
       ? String(affiliateId)
       : null;
-
+  // Resolve dates
+  console.log("checking tran date", salesOrderDate);
+  const createTrandate =
+    normalizeDateInput(salesOrderDate) || todayInEasternYYYYMMDD();
+  const patchTrandate = normalizeDateInput(salesOrderDate) || undefined;
   const addr = await getContactShippingAddress(hubspotContactId);
   const effectiveShipComplete = isInternational(addr?.country)
     ? true
@@ -67,11 +78,13 @@ export async function createNetsuiteSalesOrder(
     salesTeam,
     lineItems,
     resolvedSalesChannelId,
-    resolvedAffiliateId
+    resolvedAffiliateId,
+    createTrandate
   );
 
   try {
     if (existingSOId) {
+      //console.log("Existing", existingSOId);
       const { existingLineMap, fulfilledLines, existingSalesTeam } =
         await getExistingOrderState(existingSOId, accessToken);
 
@@ -102,14 +115,17 @@ export async function createNetsuiteSalesOrder(
         effectiveShipComplete,
         accessToken,
         resolvedSalesChannelId,
-        resolvedAffiliateId
+        resolvedAffiliateId,
+        patchTrandate
       );
     } else {
+      //console.log("not Existing", existingSOId);
       await createNewSalesOrder(payload, accessToken);
       const createdId = await findSalesOrderByHubspotSoId(
         hubspotSoId,
         accessToken
       );
+      console.log("created id", createdId);
       if (!createdId)
         throw new Error("Sales Order was created but ID could not be fetched");
 
@@ -131,7 +147,8 @@ function buildBasePayload(
   salesTeam: any,
   lineItems: any[],
   salesChannelId: string,
-  affiliateId: string | null
+  affiliateId: string | null,
+  trandate: string
 ) {
   return {
     entity: { id: customerId },
@@ -142,6 +159,7 @@ function buildBasePayload(
     salesRep: { id: "-5" },
     salesTeam,
     shipcomplete: shipComplete,
+    trandate,
     ...(affiliateId ? { partner: { id: affiliateId } } : {}),
     ...(affiliateId
       ? {
@@ -352,7 +370,8 @@ async function applySalesOrderPatch(
   shipComplete: boolean,
   token: string,
   salesChannelId: string,
-  affiliateId: string | null
+  affiliateId: string | null,
+  trandate?: string
 ) {
   // const body: any = {
   //   shipcomplete: shipComplete,
@@ -374,6 +393,10 @@ async function applySalesOrderPatch(
         : [],
     },
   };
+  if (trandate) {
+    console.log("[PATCH SO] setting trandate =", trandate);
+    body.trandate = trandate;
+  }
   console.log("sending body", body);
 
   const url = `${BASE_URL}/record/v1/salesOrder/${soId}`;
@@ -397,7 +420,7 @@ async function createNewSalesOrder(payload, token) {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      timeout: 30_000,
+      timeout: 90_000,
       httpsAgent: agent,
     });
   } catch (e: any) {
@@ -494,4 +517,32 @@ async function clearPartners(soId: string, token: string) {
       },
     }
   );
+}
+
+// --- Date helpers (safe defaults) ---
+function todayInEasternYYYYMMDD(): string {
+  // 'en-CA' yields YYYY-MM-DD;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function normalizeDateInput(d?: string | null): string | null {
+  if (!d) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d).trim());
+  if (!m) return null;
+  const y = +m[1],
+    mo = +m[2],
+    da = +m[3];
+  const dt = new Date(Date.UTC(y, mo - 1, da));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() + 1 !== mo ||
+    dt.getUTCDate() !== da
+  )
+    return null; // invalid date
+  return `${m[1]}-${m[2]}-${m[3]}`;
 }
