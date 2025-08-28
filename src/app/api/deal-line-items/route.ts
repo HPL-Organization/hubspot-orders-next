@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
       const productDetails = await hubspot.post(
         `/crm/v3/objects/products/batch/read`,
         {
-          properties: ["name", "price", "sku", "ns_item_id"],
+          properties: ["name", "sku", "ns_item_id"],
           inputs: productIds.map((id: string) => ({ id })),
         }
       );

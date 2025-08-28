@@ -8,6 +8,8 @@ import { toast } from "react-toastify";
 import GoogleMapsLoader from "../../../components/GoogleMapsLoader";
 import AddressAutocomplete from "../../../components/AddressAutocomplete";
 
+import { Backdrop, CircularProgress, LinearProgress, Box } from "@mui/material";
+
 const InfoTab = ({ netsuiteInternalId }) => {
   const searchParams = useSearchParams();
   const dealId = searchParams.get("dealId");
@@ -43,6 +45,42 @@ const InfoTab = ({ netsuiteInternalId }) => {
 
     requiredShippingMethod: "",
   });
+
+  const LOADER_TEXT_DEFAULT = [
+    "Saving details…",
+    "Saving Shipping address",
+    "Saving Billing Address",
+    "Almost done…",
+  ];
+  // loader state
+  const [saving, setSaving] = useState(false);
+  const [loaderIdx, setLoaderIdx] = useState(0);
+  const [loaderMsgs, setLoaderMsgs] = useState(LOADER_TEXT_DEFAULT);
+  const timeoutRef = React.useRef(null);
+  //  rotate loader text
+  useEffect(() => {
+    if (!saving) return;
+
+    setLoaderIdx(0);
+
+    const step = (i) => {
+      if (i >= loaderMsgs.length - 1) return;
+
+      timeoutRef.current = window.setTimeout(() => {
+        setLoaderIdx(i + 1);
+        step(i + 1);
+      }, 1200);
+    };
+
+    step(0);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [saving, loaderMsgs]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -134,6 +172,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
       toast.error("Contact ID not available.");
       return;
     }
+    setLoaderMsgs(["Saving to HubSpot…", "Updating contact…", "Finishing up…"]);
+    setSaving(true);
 
     const updatePayload = {
       contactId,
@@ -177,6 +217,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
     } catch (error) {
       console.error("HubSpot Save Error", error);
       toast.error("Something went wrong while saving to HubSpot.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -186,7 +228,12 @@ const InfoTab = ({ netsuiteInternalId }) => {
       toast.error("Contact ID not available.");
       return;
     }
-
+    setLoaderMsgs([
+      "Saving to NetSuite…",
+      "Sending customer…",
+      "Finishing up…",
+    ]);
+    setSaving(true);
     const netsuitePayload = {
       id: contactId,
       firstName: formData.firstName,
@@ -228,6 +275,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
     } catch (error) {
       console.error("NetSuite Save Error", error);
       toast.error("Something went wrong while saving to NetSuite.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -237,6 +286,12 @@ const InfoTab = ({ netsuiteInternalId }) => {
       toast.error("Contact ID not available.");
       return;
     }
+    setLoaderMsgs([
+      "Saving to HubSpot…",
+      "Syncing to NetSuite…",
+      "Finishing up…",
+    ]);
+    setSaving(true);
 
     const updatePayload = {
       contactId,
@@ -314,6 +369,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
     } catch (error) {
       console.error("Error saving contact or sending to NetSuite", error);
       toast.error("Something went wrong while saving.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -475,6 +532,24 @@ const InfoTab = ({ netsuiteInternalId }) => {
           Save to NetSuite
         </Button>
       </div>
+      {/* loader overlay */}
+      <Backdrop
+        open={saving}
+        sx={{
+          color: "#fff",
+          zIndex: (theme) => theme.zIndex.modal + 1,
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
+        <CircularProgress />
+        <div className="text-white text-lg font-medium">
+          {loaderMsgs[loaderIdx] ?? "Working…"}
+        </div>
+        <Box sx={{ width: 320 }}>
+          <LinearProgress />
+        </Box>
+      </Backdrop>
     </div>
   );
 };
