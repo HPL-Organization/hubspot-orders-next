@@ -12,6 +12,8 @@ import Autocomplete from "@mui/material/Autocomplete";
 import PaymentDialog from "./MakePaymentDialog";
 import { useVersapaySession } from "../../src/hooks/useVersapaySession";
 import PaymentDialogOffline from "../PaymentDialogOffline";
+import MakeDepositDialog from "../MakeDepositDialog";
+import DepositDialogOffline from "../DepositDialogOffline";
 
 export default function PaymentMethods({
   customerId,
@@ -20,6 +22,8 @@ export default function PaymentMethods({
   onSelect,
   defaultSelectedId = null,
   onPaid,
+  salesOrderInternalId = null,
+  onDeposited,
 }) {
   const [loading, setLoading] = useState(false);
   const [instruments, setInstruments] = useState([]);
@@ -32,11 +36,13 @@ export default function PaymentMethods({
   const [invoiceId, setInvoiceId] = useState("");
   const [amount, setAmount] = useState("");
 
+  const [depOpen, setDepOpen] = useState(false);
+  const [depOfflineOpen, setDepOfflineOpen] = useState(false);
+
   const [offlineMethods, setOfflineMethods] = useState([]);
   const [offlineOpen, setOfflineOpen] = useState(false);
 
-  const { ensure: ensureVersapaySession, reset: resetVersapaySession } =
-    useVersapaySession();
+  const { withSession, reset: resetVersapaySession } = useVersapaySession();
 
   useEffect(() => {
     setSelectedId(defaultSelectedId ?? null);
@@ -187,6 +193,16 @@ export default function PaymentMethods({
     }
   }
 
+  async function handleCreateDeposit() {
+    if (!customerId || !selectedId) return;
+    const sel = selectedOption;
+    if (!sel) return;
+    const first = invoiceOptions[0];
+    if (first?.due != null) setAmount(String(first.due));
+    if (sel.kind === "token") setDepOpen(true);
+    else setDepOfflineOpen(true);
+  }
+
   async function submitPayment() {
     if (!customerId || !selectedId || !invoiceId || !amount) return;
     const amt = Number(amount);
@@ -198,22 +214,24 @@ export default function PaymentMethods({
     setError(null);
     try {
       // const sessionId = await ensureVersapaySession();
-      const sessionId = await ensureVersapaySession();
-      const res = await fetch("/api/versapay/make-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          customerId,
-          instrumentId: selectedId,
-          invoiceId,
-          amount: amt,
-        }),
+      const data = await withSession(async (sessionId) => {
+        const res = await fetch("/api/versapay/make-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            customerId,
+            instrumentId: selectedId,
+            invoiceId,
+            amount: amt,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || json?.success === false) {
+          throw new Error(json?.message || "Payment failed");
+        }
+        return json;
       });
-      const data = await res.json();
-      if (!res.ok || data?.success === false) {
-        throw new Error(data?.message || "Payment failed");
-      }
       setPayOpen(false);
       setAmount("");
       setInvoiceId("");
@@ -270,6 +288,14 @@ export default function PaymentMethods({
             onClick={handleMakePayment}
           >
             Make Payment
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            disabled={!selectedId || !salesOrderInternalId}
+            onClick={handleCreateDeposit}
+          >
+            Create Deposit
           </Button>
         </Box>
       </Box>
@@ -383,11 +409,9 @@ export default function PaymentMethods({
         open={payOpen}
         onClose={() => setPayOpen(false)}
         invoices={invoices}
-        ensureSession={ensureVersapaySession}
         customerId={customerId}
         paymentSource={{ instrumentId: selectedId }}
         onPaid={(data) => {
-          setVpSessionId(null);
           resetVersapaySession();
           setPayOpen(false);
           onPaid && onPaid(data);
@@ -417,6 +441,36 @@ export default function PaymentMethods({
           setAmount("");
           setInvoiceId("");
           onPaid && onPaid(data);
+        }}
+      />
+      {/* NEW: Deposit (token) */}
+      <MakeDepositDialog
+        open={depOpen}
+        onClose={() => setDepOpen(false)}
+        salesOrderInternalId={salesOrderInternalId}
+        customerId={customerId}
+        paymentSource={{ instrumentId: selectedId }}
+        amount={amount}
+        setAmount={setAmount}
+        onPaid={(data) => {
+          setDepOpen(false);
+          onDeposited && onDeposited(data);
+        }}
+      />
+      {/* NEW: Deposit (offline) */}
+      <DepositDialogOffline
+        open={depOfflineOpen}
+        onClose={() => setDepOfflineOpen(false)}
+        customerId={customerId}
+        salesOrderInternalId={salesOrderInternalId}
+        selectedMethod={
+          selectedOption?.kind === "offline" ? selectedOption : null
+        }
+        amount={amount}
+        setAmount={setAmount}
+        onRecorded={(json) => {
+          setDepOfflineOpen(false);
+          onDeposited && onDeposited({ versaPay: null, netsuite: json });
         }}
       />
     </Box>

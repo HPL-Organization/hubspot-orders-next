@@ -245,6 +245,7 @@ const COUNTRY_CODES: Record<string, string> = {
   "United States Minor Outlying Islands": "UM",
   Uruguay: "UY",
   "United States": "US",
+  USA: "US",
   Uzbekistan: "UZ",
   "Holy See (Vatican City State)": "VA",
   "Saint Vincent and the Grenadines": "VC",

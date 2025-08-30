@@ -14,6 +14,14 @@ import {
   TextField,
   Button,
 } from "@mui/material";
+import { useVersapaySession } from "../../src/hooks/useVersapaySession";
+
+function formatLocalDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export default function PaymentDialog({
   open,
@@ -21,17 +29,18 @@ export default function PaymentDialog({
   invoices = [],
   defaultInvoiceId,
   defaultAmount,
-  ensureSession,
   customerId,
   paymentSource,
   onPaid,
 }) {
+  const { withSession, reset: resetVersapaySession } = useVersapaySession();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [invoiceId, setInvoiceId] = useState(defaultInvoiceId || "");
   const [amount, setAmount] = useState(
     defaultAmount != null ? String(defaultAmount) : ""
   );
+  const [trandate, setTrandate] = useState(formatLocalDate());
 
   const invoiceOptions = useMemo(() => {
     return (invoices || []).map((inv) => {
@@ -47,9 +56,9 @@ export default function PaymentDialog({
     if (!open) return;
     if (!invoiceId && invoiceOptions[0]) {
       setInvoiceId(invoiceOptions[0].id);
-      if (invoiceOptions[0].due != null)
-        setAmount(String(invoiceOptions[0].due));
+      if (invoiceOptions[0].due != null) setAmount(String(invoices[0].due));
     }
+    setTrandate((d) => d || formatLocalDate());
   }, [open, invoiceId, invoiceOptions]);
 
   async function submitPayment() {
@@ -63,34 +72,7 @@ export default function PaymentDialog({
     setError(null);
 
     try {
-      const sessionId = await ensureSession();
-      const body = {
-        sessionId,
-        customerId,
-        invoiceId, // VersaPay payload
-        amount: amt,
-        instrumentId:
-          paymentSource?.instrumentId != null
-            ? Number(paymentSource.instrumentId)
-            : undefined,
-        token: paymentSource?.token || undefined,
-      };
-
-      const res = await fetch("/api/versapay/make-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok || data?.success === false) {
-        throw new Error(data?.message || "Payment failed");
-      }
-
-      const externalId =
-        data?.payment?.transactionId ||
-        data?.transactionId ||
-        data?.id ||
-        `vp_${Date.now()}`;
+      const externalId = `HPL_${invoiceId}_${Date.now()}`;
 
       const rpRes = await fetch("/api/netsuite/record-payment", {
         method: "POST",
@@ -105,7 +87,8 @@ export default function PaymentDialog({
               : undefined,
           memo: "VersaPay payment",
           externalId,
-          trandate: new Date().toISOString().slice(0, 10),
+          trandate: trandate || formatLocalDate(),
+          //trandate: new Date().toISOString().slice(0, 10),
         }),
       });
       const rpJson = await rpRes.json().catch(() => ({}));
@@ -115,8 +98,8 @@ export default function PaymentDialog({
         );
       }
 
-      onPaid && onPaid({ versaPay: data, netsuite: rpJson });
       onClose && onClose();
+      resetVersapaySession();
     } catch (e) {
       setError(e?.message || "Payment failed");
     } finally {
@@ -158,6 +141,16 @@ export default function PaymentDialog({
           inputProps={{ min: 0, step: "0.01" }}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
+        />
+        <TextField
+          fullWidth
+          size="small"
+          margin="dense"
+          label="Payment Date"
+          type="date"
+          value={trandate}
+          onChange={(e) => setTrandate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
         />
 
         {error && (

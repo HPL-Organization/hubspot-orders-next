@@ -15,6 +15,13 @@ import {
   Button,
 } from "@mui/material";
 
+function formatLocalDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function PaymentDialogOffline({
   open,
   onClose,
@@ -33,6 +40,7 @@ export default function PaymentDialogOffline({
   const [amount, setAmount] = React.useState(
     defaultAmount != null ? String(defaultAmount) : ""
   );
+  const [trandate, setTrandate] = React.useState(formatLocalDate());
 
   const invoiceOptions = React.useMemo(() => {
     return (invoices || []).map((inv) => {
@@ -51,6 +59,16 @@ export default function PaymentDialogOffline({
       if (invoiceOptions[0].due != null)
         setAmount(String(invoiceOptions[0].due));
     }
+  }, [open, invoiceId, invoiceOptions]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (!invoiceId && invoiceOptions[0]) {
+      setInvoiceId(invoiceOptions[0].id);
+      if (invoiceOptions[0].due != null)
+        setAmount(String(invoiceOptions[0].due));
+    }
+    setTrandate((d) => d || formatLocalDate());
   }, [open, invoiceId, invoiceOptions]);
 
   async function submitPayment() {
@@ -80,6 +98,7 @@ export default function PaymentDialogOffline({
     setError(null);
 
     try {
+      const dateToUse = trandate || formatLocalDate();
       const body = {
         invoiceInternalId: Number(invoiceId),
         amount: amt,
@@ -91,7 +110,7 @@ export default function PaymentDialogOffline({
           ? { paymentOptionId: Number(defaultPaymentOptionId) }
           : {}),
         memo: `Offline payment (${selectedMethod.title})`,
-        trandate: new Date().toISOString().slice(0, 10),
+        trandate: dateToUse,
       };
       console.log(body);
 
@@ -161,6 +180,16 @@ export default function PaymentDialogOffline({
           inputProps={{ min: 0, step: "0.01" }}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
+        />
+        <TextField
+          fullWidth
+          size="small"
+          margin="dense"
+          label="Payment Date"
+          type="date"
+          value={trandate}
+          onChange={(e) => setTrandate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
         />
 
         {error && (

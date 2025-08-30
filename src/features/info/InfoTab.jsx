@@ -166,12 +166,22 @@ const InfoTab = ({ netsuiteInternalId }) => {
     }));
   };
 
+  const validateNames = () => {
+    const { firstName, middleName, lastName } = formData;
+    if (!firstName?.trim() || !middleName?.trim() || !lastName?.trim()) {
+      toast.error("First, Middle, and Last name are required.");
+      return false;
+    }
+    return true;
+  };
+
   // Save to HubSpot
   const handleSaveHubSpot = async () => {
     if (!contactId) {
       toast.error("Contact ID not available.");
       return;
     }
+    if (!validateNames()) return;
     setLoaderMsgs(["Saving to HubSpot…", "Updating contact…", "Finishing up…"]);
     setSaving(true);
 
@@ -228,6 +238,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
       toast.error("Contact ID not available.");
       return;
     }
+    if (!validateNames()) return;
     setLoaderMsgs([
       "Saving to NetSuite…",
       "Sending customer…",
@@ -286,6 +297,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
       toast.error("Contact ID not available.");
       return;
     }
+    if (!validateNames()) return;
     setLoaderMsgs([
       "Saving to HubSpot…",
       "Syncing to NetSuite…",
@@ -396,18 +408,21 @@ const InfoTab = ({ netsuiteInternalId }) => {
           name="firstName"
           value={formData.firstName}
           onChange={handleChange}
+          required
         />
         <InputField
           label="Middle Name"
           name="middleName"
           value={formData.middleName}
           onChange={handleChange}
+          required
         />
         <InputField
           label="Last Name"
           name="lastName"
           value={formData.lastName}
           onChange={handleChange}
+          required
         />
         <InputField
           label="Email"

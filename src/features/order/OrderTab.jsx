@@ -76,10 +76,23 @@ const OrderTab = ({
   //deal name
   const [dealName, setDealName] = useState(null);
 
+  //order notes
+  const [orderNotes, setOrderNotes] = useState("");
+
+  //billing terms
+  const BILLING_TERMS = [
+    { id: "2", label: "Net 30" },
+    { id: "7", label: "Paid before shipped" },
+  ];
+  const [billingTermsId, setBillingTermsId] = useState("7");
+
   const [rows, setRows] = useState([]);
   const [selectedGridProducts, setSelectedGridProducts] = useState([]);
   const searchParams = useSearchParams();
   const dealId = searchParams.get("dealId");
+
+  //overall discount
+  const [overallDiscountPct, setOverallDiscountPct] = useState(null);
 
   const [backgroundOffset, setBackgroundOffset] = useState(1000);
   const [allProductsFetched, setAllProductsFetched] = useState(false);
@@ -307,6 +320,15 @@ const OrderTab = ({
           });
         }
         setDealName(data?.dealName ?? null);
+        if (typeof data?.orderNotes === "string") {
+          setOrderNotes(data.orderNotes);
+        }
+        console.log("billing terms", data);
+        if (data?.billingTermsId) {
+          setBillingTermsId(String(data.billingTermsId));
+        } else if (data?.billingTerms?.id) {
+          setBillingTermsId(String(data.billingTerms.id));
+        }
         console.log("Deal name", dealName);
         if (data?.affiliateId || data?.affiliateName) {
           setInitialAffiliateFromDeal({
@@ -504,6 +526,21 @@ const OrderTab = ({
     setAffiliateInitDone(true);
   }, [affiliates, initialAffiliateFromDeal, affiliateInitDone]);
 
+  //overall discount
+  useEffect(() => {
+    if (overallDiscountPct === null) return;
+    const d = Math.max(0, Math.min(100, Number(overallDiscountPct) || 0));
+
+    setRows((prev) =>
+      prev.map((row) => {
+        const qty = Number(row.quantity) || 0;
+        const price = Number(row.unitPrice) || 0;
+        const total = qty * price * (1 - d / 100);
+        return { ...row, unitDiscount: d, total };
+      })
+    );
+  }, [overallDiscountPct]);
+
   //  search helpers
   const normalize = (s) =>
     (s || "")
@@ -552,6 +589,8 @@ const OrderTab = ({
           dealId,
           salesChannel: selectedSalesChannel ?? null,
           salesOrderDate: salesOrderDate || null,
+          orderNotes,
+          billingTermsId: billingTermsId || null,
           affiliate:
             selectedAffiliate && !isNoAffiliate(selectedAffiliate)
               ? {
@@ -863,6 +902,7 @@ const OrderTab = ({
         comment: "",
         quantity: 1,
         unitPrice: product.unitPrice ?? 0,
+        unitDiscount: discount,
         total,
         imageUrl: product.imageUrl,
       };
@@ -890,9 +930,19 @@ const OrderTab = ({
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 text-black">Order</h1>
-      <Box sx={{ mb: 2 }}>
+
+      {/* Product search + Add button (inline) */}
+      <Box
+        sx={{
+          mb: 2,
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "1fr auto" },
+          gap: 1.5,
+          alignItems: "center",
+        }}
+      >
         {loadingAllProducts ? (
-          <Box sx={{ mt: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center" }}>
             <CircularProgress size={24} />
             <span className="ml-2 text-gray-600">Loading products...</span>
           </Box>
@@ -902,7 +952,6 @@ const OrderTab = ({
             options={uniqueProducts}
             value={selectedProducts}
             onChange={(e, newValue) => setSelectedProducts(newValue)}
-            // getOptionLabel={(option) => `${option.sku} - ${option.name}`}
             getOptionLabel={(option) => `${option.sku} - ${option.name}`}
             loading={!allProductsFetched}
             loadingText="Still loading more products..."
@@ -966,7 +1015,7 @@ const OrderTab = ({
                 />
               ))
             }
-            sx={{ width: 600 }}
+            sx={{ width: "100%" }} // was 600; now fluid
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -977,17 +1026,21 @@ const OrderTab = ({
           />
         )}
 
-        {selectedProducts.length > 0 && (
-          <MuiButton
-            sx={{ mt: 2 }}
-            variant="contained"
-            onClick={handleAddSelectedProducts}
-          >
-            Add Selected Products
-          </MuiButton>
-        )}
+        <MuiButton
+          sx={{
+            height: 40,
+            whiteSpace: "nowrap",
+            visibility: selectedProducts.length ? "visible" : "hidden",
+          }}
+          variant="contained"
+          onClick={handleAddSelectedProducts}
+        >
+          Add Selected
+        </MuiButton>
       </Box>
-      <div style={{ height: 400, width: "100%" }}>
+
+      {/* Grid */}
+      <Box sx={{ height: { xs: 360, md: 520 }, width: "100%" }}>
         <DataGrid
           rows={rowsWithAvailability}
           columns={columns}
@@ -998,15 +1051,28 @@ const OrderTab = ({
           rowsPerPageOptions={[100]}
           isCellEditable={() => !editsLocked}
         />
-      </div>
-      <div className="flex justify-end mt-4 text-xl font-semibold text-slate-700">
-        Total: $
-        {totalSum.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}
-      </div>
-      <div className="flex flex-col ">
+      </Box>
+
+      {/* Totals + quick toggles (single row) */}
+
+      <Box
+        sx={{
+          mt: 2,
+          mb: 1,
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "1fr auto auto" },
+          gap: 1.5,
+          alignItems: "center",
+        }}
+      >
+        <div className="text-right sm:text-left text-xl font-semibold text-slate-700">
+          Total: $
+          {totalSum.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </div>
+
         <FormControlLabel
           control={
             <Checkbox
@@ -1017,9 +1083,9 @@ const OrderTab = ({
             />
           }
           label="Ship Complete (send to NetSuite)"
-          sx={{ color: "black" }}
+          sx={{ color: "black", m: 0 }}
         />
-        {/* sales team UI */}
+
         <FormControlLabel
           control={
             <Checkbox
@@ -1028,14 +1094,46 @@ const OrderTab = ({
             />
           }
           label="Add Sales team members?"
-          sx={{ color: "black", mt: 1 }}
+          sx={{ color: "black", m: 0 }}
         />
-      </div>
+
+        <TextField
+          label="Overall Discount (%)"
+          type="number"
+          size="small"
+          value={overallDiscountPct ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") {
+              setOverallDiscountPct(null);
+              return;
+            }
+            let n = Number(v);
+            if (Number.isNaN(n)) n = 0;
+            n = Math.max(0, Math.min(100, n));
+            setOverallDiscountPct(n);
+          }}
+          InputProps={{ inputProps: { min: 0, max: 100 } }}
+          helperText="Sets all line item discounts"
+          disabled={editsLocked}
+        />
+      </Box>
+
+      {/* Sales Team */}
       {useMultiSalesTeam && (
-        <div className="mt-6">
+        <div className="mt-4">
           <h2 className="text-lg font-semibold text-black mb-2">Sales Team</h2>
           {salesTeam.map((member, index) => (
-            <div key={index} className="flex items-center gap-4 mb-2">
+            <Box
+              key={index}
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "220px 160px auto auto" },
+                gap: 1.5,
+                mb: 1.5,
+                alignItems: "center",
+              }}
+            >
               <TextField
                 select
                 label="Sales Rep"
@@ -1046,7 +1144,6 @@ const OrderTab = ({
                   setSalesTeam(newTeam);
                 }}
                 size="small"
-                sx={{ width: 200 }}
               >
                 {repOptions.map((rep) => (
                   <MenuItem key={rep.id} value={rep.id}>
@@ -1067,16 +1164,15 @@ const OrderTab = ({
                       sum + (i === index ? 0 : Number(m.contribution)),
                     0
                   );
-
                   if (inputVal + currentTotal > 100) {
                     toast.error("Total contribution cannot exceed 100%");
                     return;
                   }
-
                   const newTeam = [...salesTeam];
                   newTeam[index].contribution = inputVal;
                   setSalesTeam(newTeam);
                 }}
+                size="small"
               />
 
               <FormControlLabel
@@ -1085,16 +1181,14 @@ const OrderTab = ({
                     checked={member.isPrimary}
                     onChange={() => {
                       setSalesTeam((prev) =>
-                        prev.map((m, i) => ({
-                          ...m,
-                          isPrimary: i === index,
-                        }))
+                        prev.map((m, i) => ({ ...m, isPrimary: i === index }))
                       );
                     }}
                   />
                 }
                 className=" text-black"
                 label="Primary"
+                sx={{ m: 0 }}
               />
 
               {salesTeam.length > 1 && (
@@ -1108,106 +1202,153 @@ const OrderTab = ({
                   Remove
                 </MuiButton>
               )}
-            </div>
+            </Box>
           ))}
 
-          <MuiButton
-            size="small"
-            variant="outlined"
-            disabled={
-              salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0) >=
-              100
-            }
-            onClick={() =>
-              setSalesTeam((prev) => [
-                ...prev,
-                { id: "", contribution: 0, isPrimary: false },
-              ])
-            }
-          >
-            Add Member
-          </MuiButton>
-
-          <div className="text-sm text-gray-600 mt-2">
-            Total Contribution:{" "}
-            {salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0)}%
-          </div>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <MuiButton
+              size="small"
+              variant="outlined"
+              disabled={
+                salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0) >=
+                100
+              }
+              onClick={() =>
+                setSalesTeam((prev) => [
+                  ...prev,
+                  { id: "", contribution: 0, isPrimary: false },
+                ])
+              }
+            >
+              Add Member
+            </MuiButton>
+            <div className="text-sm text-gray-600">
+              Total Contribution:{" "}
+              {salesTeam.reduce((s, m) => s + Number(m.contribution), 0)}%
+            </div>
+          </Box>
         </div>
       )}
-      {/* Sales Channel UI */}
-      <Box sx={{ mt: 3, mb: 2, maxWidth: 400 }}>
-        <Autocomplete
-          options={salesChannels}
-          loading={salesChannelLoading}
-          value={selectedSalesChannel}
-          onChange={(e, newVal) => setSelectedSalesChannel(newVal ?? null)}
-          getOptionLabel={(opt) => opt.label || opt.value || ""}
-          isOptionEqualToValue={(opt, val) => opt.id === val?.id}
-          noOptionsText={
-            salesChannelLoading ? "Loading channels..." : "No channels found"
-          }
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Sales Channel"
-              placeholder="Select sales channel"
-            />
-          )}
-        />
-      </Box>
 
-      {/* Affiliate UI */}
-      <Box sx={{ mt: 3, mb: 2, maxWidth: 400 }}>
-        <Autocomplete
-          options={affiliateOptions}
-          loading={affiliateLoading}
-          value={selectedAffiliate}
-          onChange={(e, newVal) => {
-            setAffiliateInitDone(true);
+      {/* Left: Sales Channel + Affiliate + SO Date | Right: Order Notes */}
+      <Box
+        sx={{
+          mt: 3,
+          mb: 2,
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "420px 1fr" },
+          gap: 16 / 8, // 2
+          alignItems: "start",
+        }}
+      >
+        <Box sx={{ display: "grid", gap: 1.5 }}>
+          <Autocomplete
+            options={salesChannels}
+            loading={salesChannelLoading}
+            value={selectedSalesChannel}
+            onChange={(e, newVal) => setSelectedSalesChannel(newVal ?? null)}
+            getOptionLabel={(opt) => opt.label || opt.value || ""}
+            isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+            noOptionsText={
+              salesChannelLoading ? "Loading channels..." : "No channels found"
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Sales Channel"
+                placeholder="Select sales channel"
+              />
+            )}
+            disabled={editsLocked}
+          />
+          <TextField
+            select
+            label="Billing Terms"
+            value={billingTermsId}
+            onChange={(e) => setBillingTermsId(String(e.target.value))}
+            size="small"
+            fullWidth
+            helperText="defaults to paid before shipping"
+            disabled={editsLocked}
+          >
+            {BILLING_TERMS.map((t) => (
+              <MenuItem key={t.id} value={t.id}>
+                {t.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Autocomplete
+            options={affiliateOptions}
+            loading={affiliateLoading}
+            value={selectedAffiliate}
+            onChange={(e, newVal) => {
+              setAffiliateInitDone(true);
+              setSelectedAffiliate(
+                !newVal || isNoAffiliate(newVal) ? NO_AFFIL : newVal
+              );
+            }}
+            getOptionLabel={(opt) => opt?.label || ""}
+            isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+            noOptionsText={
+              affiliateLoading ? "Loading affiliates..." : "No affiliates found"
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Affiliate"
+                placeholder="Select affiliate"
+                helperText="Optional"
+              />
+            )}
+            disabled={editsLocked}
+          />
 
-            setSelectedAffiliate(
-              !newVal || isNoAffiliate(newVal) ? NO_AFFIL : newVal
-            );
-          }}
-          getOptionLabel={(opt) => opt?.label || ""}
-          isOptionEqualToValue={(opt, val) => opt.id === val?.id}
-          noOptionsText={
-            affiliateLoading ? "Loading affiliates..." : "No affiliates found"
-          }
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Affiliate"
-              placeholder="Select affiliate"
-              helperText="Optional"
-            />
-          )}
-        />
-      </Box>
-      {/* Sales Order Date */}
-      <Box sx={{ mt: 3, mb: 2, maxWidth: 260 }}>
+          <TextField
+            label="Sales Order Date"
+            type="date"
+            value={salesOrderDate}
+            onChange={(e) => setSalesOrderDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional"
+            size="small"
+            fullWidth
+            disabled={editsLocked}
+          />
+        </Box>
+
         <TextField
-          label="Sales Order Date"
-          type="date"
-          value={salesOrderDate}
-          onChange={(e) => setSalesOrderDate(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          helperText="Optional"
-          size="small"
+          label="Order notes"
+          placeholder="Internal notes for this order…"
+          value={orderNotes}
+          onChange={(e) => setOrderNotes(e.target.value)}
+          multiline
+          minRows={6}
           fullWidth
+          disabled={editsLocked}
         />
       </Box>
+
       {/* Save Buttons */}
-      <div className=" flex gap-1">
+      <Box
+        sx={{
+          mt: 2,
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "auto auto" },
+          gap: 1,
+          justifyContent: { xs: "stretch", sm: "start" },
+        }}
+      >
         <Button
           onClick={handleSaveClick}
           className="bg-[#FF7A59]! hover:bg-[#e76445]!"
         >
           Save to Hubspot
         </Button>
+
         <Button
           disabled={creatingOrder}
           onClick={async () => {
+            // unchanged
             if (!contactId || !dealId) {
               toast.error("Missing contact or deal ID.");
               return;
@@ -1229,28 +1370,24 @@ const OrderTab = ({
               (sum, member) => sum + Number(member.contribution),
               0
             );
-
             if (salesTeam.some((member) => !member.id)) {
               toast.error(
                 "All Sales Team members must have a valid Sales Rep selected."
               );
               return;
             }
-
             if (totalContribution < 100) {
               toast.error("Total sales team contribution must be 100%");
               return;
             }
-            console.log("here");
+
             handleSaveClick();
-            setCreatingOrder(true); //  start loading state
+            setCreatingOrder(true);
 
             try {
-              //working line items(CRUD complete)
               const visibleRows = rows.filter(
                 (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
               );
-
               const lineItems = [...visibleRows, ...deletedRows].map((row) => ({
                 itemId: row.ns_item_id,
                 quantity: Number(row.quantity) || 1,
@@ -1259,8 +1396,6 @@ const OrderTab = ({
                 isClosed: row.isClosed === true,
                 comment: row.comment || "",
               }));
-
-              console.log("Line items to netsuite", lineItems);
 
               const formattedSalesTeam = useMultiSalesTeam
                 ? salesTeam.map((member) => ({
@@ -1281,10 +1416,7 @@ const OrderTab = ({
                 hubspotContactId: contactId,
                 lineItems,
                 shipComplete,
-                salesTeam: {
-                  replaceAll: true,
-                  items: formattedSalesTeam,
-                },
+                salesTeam: { replaceAll: true, items: formattedSalesTeam },
                 salesChannel: selectedSalesChannel?.id ?? null,
                 affiliateId:
                   selectedAffiliate && !isNoAffiliate(selectedAffiliate)
@@ -1292,40 +1424,28 @@ const OrderTab = ({
                     : null,
                 salesOrderDate: salesOrderDate || null,
                 dealName: dealName,
-                //unfulfilledLines,
-                //fulfilledLinesToEdit,
+                orderNotes: orderNotes,
+                billingTermsId: billingTermsId,
               };
-
-              console.log(" Final Sales Order Payload to NetSuite:", payload);
 
               const res = await fetch("/api/netsuite/salesorder", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
               });
-              console.log("Response status: in CSO", res.status);
+
               let data;
               try {
                 data = await res.json();
               } catch {
                 data = null;
               }
+              if (!res.ok) throw new Error(data?.error || "Unknown error");
 
-              if (!res.ok) {
-                throw new Error(data?.error || "Unknown error");
-              }
-
-              console.log(" Sales Order created:", data);
               toast.success(" Sales Order submitted to NetSuite.");
-              if (data?.id) {
-                console.log(data.id);
-                setNetsuiteInternalId(data.id);
-              }
+              if (data?.id) setNetsuiteInternalId(data.id);
+              if (data?.netsuiteTranId) setNetsuiteTranId(data.netsuiteTranId);
 
-              if (data?.netsuiteTranId) {
-                console.log(data.netsuiteTranId);
-                setNetsuiteTranId(data.netsuiteTranId);
-              }
               try {
                 await fetch("/api/hubspot/set-deal-stage", {
                   method: "POST",
@@ -1335,10 +1455,6 @@ const OrderTab = ({
                     stage: CLOSED_COMPLETE_STAGE,
                   }),
                 });
-                console.log(
-                  "onhubspot",
-                  onHubspotStageClosedWonComplete ? "present" : "not present"
-                );
                 onHubspotStageClosedWonComplete?.();
                 toast.success(
                   "Deal moved to 'Closed won - Complete' in HubSpot."
@@ -1350,13 +1466,15 @@ const OrderTab = ({
               console.error(" Sales Order creation failed:", err);
               toast.error(" Failed to submit Sales Order.");
             } finally {
-              setCreatingOrder(false); //  done
+              setCreatingOrder(false);
             }
           }}
         >
           {creatingOrder ? "Submitting..." : "Mark Closed, send to Netsuite "}
         </Button>
-      </div>
+      </Box>
+
+      {/* Loading overlay (unchanged) */}
       <Backdrop
         open={creatingOrder}
         sx={{
@@ -1367,7 +1485,6 @@ const OrderTab = ({
         }}
       >
         <CircularProgress />
-
         <div className="text-white text-lg font-medium">
           {LOADER_TEXT[loaderIdx]}
         </div>

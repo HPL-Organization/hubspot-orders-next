@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
             TL.Transaction AS FulfillmentId,
             I.ItemId AS ItemSKU,
             I.DisplayName AS ItemDisplayName,
-            TL.Quantity
+            TL.Quantity,
+            TL.custcol_hpl_serialnumber AS SerialNumber
           FROM
             TransactionLine TL
             INNER JOIN Item I ON I.ID = TL.Item
@@ -163,17 +164,33 @@ export async function GET(req: NextRequest) {
         //  Group items by SKU and name, and calculate total quantity
         const grouped = new Map<
           string,
-          { sku: string; productName: string; quantity: number }
+          {
+            sku: string;
+            productName: string;
+            quantity: number;
+            serialNumbers: string[];
+          }
         >();
 
         for (const line of lineRes.data.items) {
           const key = `${line.itemsku}::${line.itemdisplayname}`;
+          const serial =
+            line.serialnumber ??
+            line.SerialNumber ??
+            line.custcol_hpl_serialnumber ??
+            null;
+
           if (!grouped.has(key)) {
             grouped.set(key, {
               sku: line.itemsku,
               productName: line.itemdisplayname,
               quantity: Math.abs(parseFloat(line.quantity)),
+              serialNumbers: serial ? [String(serial)] : [],
             });
+          } else {
+            if (serial) {
+              grouped.get(key)!.serialNumbers.push(String(serial));
+            }
           }
         }
 
@@ -181,6 +198,7 @@ export async function GET(req: NextRequest) {
         const items = Array.from(grouped.values()).map((line) => ({
           ...line,
           tracking: trackingNumber,
+          serialNumbers: line.serialNumbers,
         }));
 
         return {

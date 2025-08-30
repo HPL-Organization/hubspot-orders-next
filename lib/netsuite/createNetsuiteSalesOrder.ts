@@ -19,6 +19,10 @@ const NETSUITE_ACCOUNT_ID = isSB
   : process.env.NETSUITE_ACCOUNT_ID!;
 //const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
+function normalizeBillingTermsId(v?: string | null): string | null {
+  const s = String(v ?? "").trim();
+  return s === "2" || s === "7" ? s : null;
+}
 
 // Main export
 export async function createNetsuiteSalesOrder(
@@ -43,7 +47,9 @@ export async function createNetsuiteSalesOrder(
   salesChannelId?: string | null,
   affiliateId?: string | null,
   salesOrderDate?: string | null,
-  dealName?: string | null
+  dealName?: string | null,
+  orderNotes?: string | null,
+  billingTermsId?: string | null
 ) {
   const accessToken = await getValidToken();
   const resolvedSalesChannelId =
@@ -52,6 +58,8 @@ export async function createNetsuiteSalesOrder(
     affiliateId != null && String(affiliateId).trim() !== ""
       ? String(affiliateId)
       : null;
+  const resolvedBillingTermsId = normalizeBillingTermsId(billingTermsId);
+
   // Resolve dates
   console.log("checking tran date", salesOrderDate);
   const createTrandate =
@@ -81,7 +89,9 @@ export async function createNetsuiteSalesOrder(
     resolvedSalesChannelId,
     resolvedAffiliateId,
     createTrandate,
-    dealName
+    dealName,
+    orderNotes,
+    resolvedBillingTermsId
   );
 
   try {
@@ -119,7 +129,9 @@ export async function createNetsuiteSalesOrder(
         resolvedSalesChannelId,
         resolvedAffiliateId,
         patchTrandate,
-        dealName
+        dealName,
+        orderNotes,
+        resolvedBillingTermsId
       );
     } else {
       //console.log("not Existing", existingSOId);
@@ -152,7 +164,9 @@ function buildBasePayload(
   salesChannelId: string,
   affiliateId: string | null,
   trandate: string,
-  dealName: string | null
+  dealName: string | null,
+  orderNotes?: string,
+  billingTermsId?: string | null
 ) {
   return {
     entity: { id: customerId },
@@ -164,8 +178,11 @@ function buildBasePayload(
     salesTeam,
     shipcomplete: shipComplete,
     trandate,
-
+    ...(billingTermsId ? { terms: { id: billingTermsId } } : {}),
     custbody_hpl_hs_deal_name: dealName,
+    ...(orderNotes != null
+      ? { custbody_hpl_ordernote: String(orderNotes) }
+      : {}),
 
     ...(affiliateId ? { partner: { id: affiliateId } } : {}),
     ...(affiliateId
@@ -379,7 +396,9 @@ async function applySalesOrderPatch(
   salesChannelId: string,
   affiliateId: string | null,
   trandate?: string,
-  dealName?: string | null
+  dealName?: string | null,
+  orderNotes?: string | null,
+  billingTermsId?: string | null
 ) {
   // const body: any = {
   //   shipcomplete: shipComplete,
@@ -407,6 +426,20 @@ async function applySalesOrderPatch(
   }
   if (typeof dealName === "string" && dealName.length > 0) {
     body.custbody_hpl_hs_deal_name = dealName;
+  }
+  console.log("Xxxxxxxx", orderNotes);
+  if (orderNotes !== undefined) {
+    const text = String(orderNotes ?? "").trim();
+    if (text) {
+      body.custbody_hpl_ordernote = orderNotes;
+    } else {
+      body.custbody_hpl_ordernote = "";
+    }
+  }
+  if (billingTermsId !== undefined) {
+    if (billingTermsId) {
+      body.terms = { id: billingTermsId };
+    }
   }
   console.log("sending body", body);
 

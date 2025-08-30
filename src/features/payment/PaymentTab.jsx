@@ -280,6 +280,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
                 : val;
             setSelectedPaymentOptionId(id ? Number(id) : null);
           }}
+          salesOrderInternalId={netsuiteInternalId}
         />
       ) : (
         <Typography variant="body2" color="text.secondary">
@@ -495,15 +496,6 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDeposit(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              setOpenDeposit(false);
-            }}
-            disabled={!selectedPaymentOptionId}
-          >
-            Continue
-          </Button>
         </DialogActions>
       </Dialog>
 
@@ -527,13 +519,6 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         <DialogActions>
           <Button onClick={() => setOpenFull(false)} disabled={submittingFull}>
             Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleConfirmFullPayment}
-            disabled={!selectedPaymentOptionId || submittingFull}
-          >
-            {submittingFull ? "Processing..." : "Continue"}
           </Button>
         </DialogActions>
       </Dialog>

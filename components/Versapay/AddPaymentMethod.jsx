@@ -374,6 +374,7 @@
 //   );
 // }
 
+// components/versapay/AddPaymentMethod.jsx
 "use client";
 /* global versapay */
 import React, { useEffect, useRef, useState } from "react";
@@ -385,11 +386,20 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
+  CircularProgress,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import PaymentDialog from "./MakePaymentDialog";
 import { useVersapaySession } from "../../src/hooks/useVersapaySession";
-import { looksLikeNotFound } from "../../lib/versapay/session";
+import {
+  vpLog,
+  color,
+  enableVpFetchProbe,
+  disableVpFetchProbe,
+} from "../../lib/versapay/vpTrace";
+
+// Global guard for the active flow
+let VP_ACTIVE = { key: 0, sid: null, handled: false };
 
 export default function AddPaymentMethod({
   customerId,
@@ -398,30 +408,75 @@ export default function AddPaymentMethod({
   buttonLabel = "+ Add Payment Method",
   invoices = [],
   onPaid,
+  openPaymentDialogOnSave = false,
 }) {
   const [showAddUI, setShowAddUI] = useState(false);
+  const [dialogKey, setDialogKey] = useState(0);
+  const [containerKey, setContainerKey] = useState(0);
+
   const containerRef = useRef(null);
   const clientRef = useRef(null);
-  const sessionIdRef = useRef(null);
+  const offApprovalRef = useRef(null);
+  const mountIdRef = useRef(0);
+  const flowSidRef = useRef(null);
+
+  const [mounting, setMounting] = useState(false);
+  const [submittingUI, setSubmittingUI] = useState(false);
 
   // payment states
   const [payOpen, setPayOpen] = useState(false);
   const [payToken, setPayToken] = useState(null);
 
-  // UI-only: control Save button enabled state
+  // UI-only
   const [canSubmit, setCanSubmit] = useState(false);
+  const [frameLoading, setFrameLoading] = useState(false);
 
   const { ensure: ensureVersapaySession, reset: resetVersapaySession } =
     useVersapaySession();
 
   const teardownFrame = () => {
+    vpLog(
+      `teardownFrame() mount=${mountIdRef.current} sid=${
+        flowSidRef.current ?? "∅"
+      }`
+    );
+    const sidAtTeardown = flowSidRef.current;
+
+    try {
+      if (typeof offApprovalRef.current === "function") {
+        offApprovalRef.current();
+        vpLog("onApproval unsubscribed");
+      }
+    } catch (e) {
+      vpLog("onApproval unsubscribe threw", e);
+    }
+    offApprovalRef.current = null;
+
+    try {
+      clientRef.current?.destroy?.();
+    } catch {}
+    try {
+      clientRef.current?.removeFrame?.();
+    } catch {}
+
     if (containerRef.current) containerRef.current.innerHTML = "";
     clientRef.current = null;
+
+    VP_ACTIVE = { key: 0, sid: null, handled: false };
+    if (sidAtTeardown && flowSidRef.current === sidAtTeardown) {
+      flowSidRef.current = null;
+    }
+
     setCanSubmit(false);
+    setSubmittingUI(false);
+    setFrameLoading(false);
+    disableVpFetchProbe();
+    setTimeout(() => {}, 0);
   };
 
-  // Versapay flow (session -> mount iframe -> onApproval)
   const handleAddPaymentMethod = async () => {
+    if (mounting) return;
+    setMounting(true);
     try {
       if (!customerId) {
         const msg = "No customerId available.";
@@ -431,20 +486,41 @@ export default function AddPaymentMethod({
       }
 
       setCanSubmit(false);
-      setShowAddUI(true); // open dialog
+      teardownFrame();
+      setDialogKey((k) => k + 1);
+      setContainerKey((k) => k + 1);
+      enableVpFetchProbe("pre-mount");
+      setShowAddUI(true);
+      setFrameLoading(true);
 
-      // ensure the dialog content has rendered
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => requestAnimationFrame(r));
+
+      const myMountId = ++mountIdRef.current;
+      vpLog(...color(`BEGIN mount=${myMountId}`, "#2f6fed"));
+      disableVpFetchProbe();
+      enableVpFetchProbe(`mount#${myMountId}`);
 
       const mountWithNewSession = async () => {
         const sid = await ensureVersapaySession({ forceNew: true });
-        sessionIdRef.current = sid;
+        flowSidRef.current = sid;
+        vpLog(`created session sid=${sid} (mount=${myMountId})`);
+
+        VP_ACTIVE.key += 1;
+        VP_ACTIVE.sid = sid;
+        VP_ACTIVE.handled = false;
+        const myFlowKey = VP_ACTIVE.key;
+
+        await new Promise((r) => setTimeout(r, 100));
 
         if (typeof versapay === "undefined") {
           throw new Error("Versapay SDK not loaded.");
         }
 
-        // Init client
+        try {
+          versapay.destroyClient?.();
+        } catch {}
+
         const maybeClient = versapay.initClient(sid, {}, []);
         const vpClient =
           typeof maybeClient?.then === "function"
@@ -452,42 +528,65 @@ export default function AddPaymentMethod({
             : maybeClient;
 
         clientRef.current = vpClient;
+        vpLog("versapay.initClient() → client set");
 
-        // Clear any prior DOM and mount iframe
         if (containerRef.current) containerRef.current.innerHTML = "";
         const initP = vpClient.initFrame(
           containerRef.current,
-          "358px",
-          "500px"
+          "420px", // taller to avoid field/captcha overflow
+          "100%" // responsive width
         );
         if (initP && typeof initP.then === "function") {
           await initP;
         }
 
-        setCanSubmit(true); // enable Save once mounted
-        return vpClient;
+        const hasIframe = !!containerRef.current?.querySelector("iframe");
+        if (!hasIframe)
+          throw new Error("VersaPay iframe missing after initFrame()");
+
+        try {
+          const iframeEl = containerRef.current?.querySelector("iframe");
+          if (iframeEl) {
+            const onLoad = () => setFrameLoading(false);
+            iframeEl.addEventListener("load", onLoad, { once: true });
+            setTimeout(() => setFrameLoading(false), 2500); // fallback
+          } else {
+            setFrameLoading(false);
+          }
+        } catch {
+          setFrameLoading(false);
+        }
+
+        try {
+          vpClient?.on?.("error", (e) => vpLog("VP client error", e));
+          vpClient?.on?.("stateChange", (s) => vpLog("VP state", s));
+        } catch {}
+
+        setCanSubmit(true);
+        return { vpClient, sid, myFlowKey };
       };
 
+      let vpClient, flowSid, myFlowKey;
       try {
-        await mountWithNewSession();
+        ({ vpClient, sid: flowSid, myFlowKey } = await mountWithNewSession());
       } catch (e) {
-        if (looksLikeNotFound(e)) {
-          // stale/invalid session—reset and retry once
-          resetVersapaySession();
-          await mountWithNewSession();
-        } else {
-          throw e;
-        }
+        vpLog("mountWithNewSession() failed; resetting & retrying", e);
+        resetVersapaySession();
+        ({ vpClient, sid: flowSid, myFlowKey } = await mountWithNewSession());
       }
 
       const client = clientRef.current;
-      client.onApproval(
+      const maybeOff = client.onApproval(
         async (result) => {
-          try {
-            const sid = sessionIdRef.current;
-            if (!sid) throw new Error("Missing Versapay session id.");
+          if (mountIdRef.current !== myMountId) return;
+          if (VP_ACTIVE.key !== myFlowKey || VP_ACTIVE.sid !== flowSid) return;
+          if (VP_ACTIVE.handled) return;
+          VP_ACTIVE.handled = true;
 
-            // $1 auth-only to retrieve meta + ensure token works
+          try {
+            const sid = flowSid;
+
+            // $1 auth-only
             const authResp = await fetch("/api/versapay/process-sale", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -500,7 +599,6 @@ export default function AddPaymentMethod({
                 orderNumber: `AUTH-${Date.now()}`,
               }),
             });
-
             const auth = await authResp.json();
             if (!authResp.ok) throw auth;
 
@@ -515,11 +613,12 @@ export default function AddPaymentMethod({
                 accountType: auth?.payment?.accountType,
               }),
             });
-
             const saveData = await saveResp.json();
             if (!saveResp.ok) throw saveData;
+
             onSaved?.(saveData);
 
+            // Void the $1 auth (best-effort)
             try {
               const txId = auth?.payment?.transactionId;
               if (txId) {
@@ -531,32 +630,47 @@ export default function AddPaymentMethod({
               }
             } catch {}
 
-            setPayToken(result.token);
-            setPayOpen(true);
+            // ⬇️ Only open PaymentDialog if explicitly enabled
+            if (openPaymentDialogOnSave) {
+              setPayToken(result.token);
+              setPayOpen(true);
+            }
+
+            setSubmittingUI(false);
             teardownFrame();
             setShowAddUI(false);
             resetVersapaySession();
+            vpLog(...color(`END mount=${myMountId} success`, "#2f6fed"));
           } catch (err) {
             console.error("Flow error:", err);
+            setSubmittingUI(false);
             onError?.(err);
           }
         },
         (error) => {
+          if (mountIdRef.current !== myMountId) return;
           console.error("Payment rejected:", error?.error || error);
+          setSubmittingUI(false);
           onError?.(error);
         }
       );
+      offApprovalRef.current = typeof maybeOff === "function" ? maybeOff : null;
     } catch (err) {
       console.error(
         "Failed to create Versapay session:",
         err?.response?.data || err
       );
+      setFrameLoading(false);
       onError?.(err);
+    } finally {
+      setMounting(false);
     }
   };
 
-  const handleDialogClose = () => {
+  const handleDialogClose = (_e, reason) => {
+    vpLog(`Dialog closing. reason=${reason || "unknown"}`);
     setShowAddUI(false);
+    setSubmittingUI(false);
     teardownFrame();
     resetVersapaySession();
   };
@@ -565,8 +679,8 @@ export default function AddPaymentMethod({
     return () => {
       teardownFrame();
       setPayToken(null);
-      sessionIdRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -584,16 +698,15 @@ export default function AddPaymentMethod({
         size="small"
         variant="outlined"
         onClick={handleAddPaymentMethod}
-        disabled={!customerId}
+        disabled={!customerId || mounting}
       >
         {buttonLabel}
       </Button>
 
-      {/* Dialog iframe (UI only) */}
       <Dialog
+        key={dialogKey}
         open={showAddUI}
         onClose={handleDialogClose}
-        keepMounted
         fullWidth
         maxWidth="sm"
         aria-labelledby="add-payment-method-title"
@@ -610,26 +723,28 @@ export default function AddPaymentMethod({
         </DialogTitle>
 
         <DialogContent dividers sx={{ bgcolor: "#fafafa" }}>
-          <form
-            id="vp-form-global"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const c = clientRef.current;
-              if (!c) {
-                console.error("Versapay client not ready");
-                return;
-              }
-              const p = c.submitEvents();
-              if (p && typeof p.then === "function") {
-                p.catch((err) => console.error("submitEvents error:", err));
-              }
-            }}
-          >
+          <Box sx={{ position: "relative", width: "100%" }}>
+            {frameLoading && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  bgcolor: "rgba(255,255,255,0.6)",
+                  zIndex: 1,
+                }}
+              >
+                <CircularProgress />
+              </Box>
+            )}
             <div
+              key={containerKey}
               id="vp-container"
               ref={containerRef}
               style={{
-                height: "358px",
+                height: "420px",
                 width: "100%",
                 maxWidth: "500px",
                 border: "1px solid #e5e7eb",
@@ -637,9 +752,11 @@ export default function AddPaymentMethod({
                 padding: "8px",
                 background: "#fff",
                 margin: "8px 0",
+                boxSizing: "border-box",
+                overflow: "hidden",
               }}
             />
-          </form>
+          </Box>
         </DialogContent>
 
         <DialogActions sx={{ px: 3, py: 2 }}>
@@ -648,18 +765,26 @@ export default function AddPaymentMethod({
           </Button>
           <Button
             id="vp-save-global"
-            disabled={!canSubmit}
+            disabled={!canSubmit || submittingUI}
             type="button"
-            onClick={() =>
-              document
-                .getElementById("vp-form-global")
-                ?.dispatchEvent(
-                  new Event("submit", { cancelable: true, bubbles: true })
-                )
-            }
+            onClick={async () => {
+              const c = clientRef.current;
+              if (!c || submittingUI) return;
+              try {
+                setSubmittingUI(true); // button loader on
+                vpLog("Save clicked; calling submitEvents()");
+                const p = c.submitEvents();
+                if (p && typeof p.then === "function") await p;
+                // loader will be cleared on approval/reject/error
+              } catch (err) {
+                console.error("submitEvents error:", err);
+                setSubmittingUI(false); // immediate failure
+              }
+            }}
             variant="contained"
           >
-            Save Payment Method
+            {submittingUI ? "Saving…" : "Save Payment Method"}
+            {submittingUI && <CircularProgress size={18} sx={{ ml: 1 }} />}
           </Button>
         </DialogActions>
       </Dialog>

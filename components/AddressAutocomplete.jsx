@@ -12,7 +12,7 @@ const AddressAutocomplete = ({ onAddressSelect }) => {
       inputRef.current,
       {
         types: ["address"],
-        componentRestrictions: { country: "us" },
+        //componentRestrictions: { country: "us" },
       }
     );
 

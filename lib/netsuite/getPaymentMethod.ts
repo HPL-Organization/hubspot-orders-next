@@ -1,7 +1,14 @@
 import { getValidToken } from "./token";
 
-const RESTLET_URL =
-  "https://6518688.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2438&deploy=1";
+const NS_ENV = process.env.NETSUITE_ENV?.toLowerCase() || "prod";
+const isSB = NS_ENV === "sb";
+
+const NETSUITE_ACCOUNT_ID = isSB
+  ? process.env.NETSUITE_ACCOUNT_ID_SB!
+  : process.env.NETSUITE_ACCOUNT_ID!;
+
+const RESTLET_URL = `https://${NETSUITE_ACCOUNT_ID}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2438&deploy=1`;
+// "https://6518688.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2438&deploy=1";
 
 export type PaymentInstrument = {
   id: string;

@@ -22,7 +22,6 @@ import IconButton from "@mui/material/IconButton";
 
 const FulfillmentTab = ({ netsuiteInternalId }) => {
   // User's chosen locale
-
   const [locale, setLocale] = useState("en-US");
   const [fulfillments, setFulfillments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -41,12 +40,23 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
 
   const handleTrackingNumberDisplay = (tracking) => {
     if (!tracking) return "—";
-
-    // Split the tracking numbers by comma, remove duplicates, and join back with comma
     const uniqueTrackingNumbers = Array.from(
       new Set(tracking.split(",").map((num) => num.trim()))
     );
-    return uniqueTrackingNumbers.join(", ") || "-";
+    return uniqueTrackingNumbers.join(", ") || "—";
+  };
+
+  //  serial number display helper
+  const handleSerialsDisplay = (serials) => {
+    if (!serials || (Array.isArray(serials) && serials.length === 0))
+      return "—";
+    const list = Array.isArray(serials)
+      ? serials
+      : String(serials).split(/[,;\n]+/);
+    const unique = Array.from(
+      new Set(list.map((s) => String(s).trim()).filter(Boolean))
+    );
+    return unique.join(", ") || "—";
   };
 
   useEffect(() => {
@@ -141,6 +151,8 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
                         <TableCell>SKU</TableCell>
                         <TableCell>Display Name</TableCell>
                         <TableCell>Quantity Shipped</TableCell>
+
+                        <TableCell>Serial #</TableCell>
                         <TableCell>Tracking #</TableCell>
                       </TableRow>
                     </TableHead>
@@ -152,13 +164,20 @@ const FulfillmentTab = ({ netsuiteInternalId }) => {
                             <TableCell>{item.productName || "—"}</TableCell>
                             <TableCell>{item.quantity || "—"}</TableCell>
                             <TableCell>
+                              {handleSerialsDisplay(
+                                item.serialNumbers ??
+                                  item.serialnumber ??
+                                  item.custcol_hpl_serialnumber
+                              )}
+                            </TableCell>
+                            <TableCell>
                               {handleTrackingNumberDisplay(item.tracking)}
                             </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={4}>No items found.</TableCell>
+                          <TableCell colSpan={5}>No items found.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>

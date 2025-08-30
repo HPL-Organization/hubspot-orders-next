@@ -1,9 +1,14 @@
 import axios from "axios";
 import { getValidToken } from "./token";
 
+const NS_ENV = process.env.NETSUITE_ENV?.toLowerCase() || "prod";
+const isSB = NS_ENV === "sb";
+
+const NETSUITE_ACCOUNT_ID = isSB
+  ? process.env.NETSUITE_ACCOUNT_ID_SB!
+  : process.env.NETSUITE_ACCOUNT_ID!;
 const PAYMENT_METHOD_ID = 10; //manual lookup from netsuite, id for payment token
-const RESTLET_URL =
-  "https://6518688.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2437&deploy=1";
+const RESTLET_URL = `https://${NETSUITE_ACCOUNT_ID}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2437&deploy=1`;
 const accessToken = await getValidToken();
 
 export async function savePaymentMethod(

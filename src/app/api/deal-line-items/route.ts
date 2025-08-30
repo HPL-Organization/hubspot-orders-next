@@ -9,6 +9,14 @@ const hubspot = axios.create({
     "Content-Type": "application/json",
   },
 });
+const BILLING_TERMS: Record<string, string> = {
+  "2": "Net 30",
+  "7": "Paid before shipped",
+};
+const normalizeBillingTermsId = (v: any) => {
+  const s = String(v ?? "").trim();
+  return s === "2" || s === "7" ? s : "";
+};
 
 //Get: Fetching Line items to keep frontend up to date
 export async function GET(req: NextRequest) {
@@ -25,7 +33,7 @@ export async function GET(req: NextRequest) {
     const dealResp = await hubspot.get(`/crm/v3/objects/deals/${dealId}`, {
       params: {
         properties:
-          "sales_channel,sales_channel_id,affiliate_id,affiliate_name,hpl_ns_so_date,dealname",
+          "sales_channel,sales_channel_id,affiliate_id,affiliate_name,hpl_ns_so_date,dealname,hpl_order_notes,hpl_ns_terms",
       },
     });
     const dealProps = dealResp.data?.properties ?? {};
@@ -35,6 +43,12 @@ export async function GET(req: NextRequest) {
     const affiliateName = dealProps.affiliate_name ?? null;
     const salesOrderDate = dealProps.hpl_ns_so_date ?? null;
     const dealName = dealProps.dealname ?? null;
+    const orderNotes = dealProps.hpl_order_notes ?? "";
+    const billingTermsIdRaw = dealProps.hpl_ns_terms ?? "";
+    const billingTermsId = normalizeBillingTermsId(billingTermsIdRaw);
+    const billingTermsLabel = billingTermsId
+      ? BILLING_TERMS[billingTermsId]
+      : null;
     // 1. Fetch associated line items
     const associations = await hubspot.get(
       `/crm/v3/objects/deals/${dealId}/associations/line_items`
@@ -51,6 +65,9 @@ export async function GET(req: NextRequest) {
           affiliateName,
           salesOrderDate,
           dealName,
+          orderNotes,
+          billingTermsId,
+          billingTermsLabel,
         }),
         {
           status: 200,
@@ -225,6 +242,10 @@ export async function GET(req: NextRequest) {
         affiliateId,
         affiliateName,
         dealName,
+        salesOrderDate,
+        orderNotes,
+        billingTermsId,
+        billingTermsLabel,
       }),
       {
         status: 200,
@@ -251,6 +272,8 @@ export async function POST(req: NextRequest) {
       salesChannel,
       affiliate,
       salesOrderDate,
+      orderNotes,
+      billingTermsId,
     } = body;
 
     if (!dealId || !Array.isArray(selectedProducts)) {
@@ -300,6 +323,36 @@ export async function POST(req: NextRequest) {
       } catch (e: any) {
         console.warn(
           "Warning: failed to set hpl_ns_so_date (property may not exist):",
+          e?.response?.data || e?.message
+        );
+      }
+    }
+    if (orderNotes !== undefined) {
+      const notesStr = orderNotes === null ? "" : String(orderNotes);
+      try {
+        await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
+          properties: { hpl_order_notes: notesStr },
+        });
+        console.log(
+          `  Updated deal ${dealId} hpl_order_notes (${notesStr.length} chars)`
+        );
+      } catch (e: any) {
+        console.warn(
+          "Warning: failed to set hpl_order_notes (property may not exist):",
+          e?.response?.data || e?.message
+        );
+      }
+    }
+    if (billingTermsId !== undefined) {
+      const cleaned = normalizeBillingTermsId(billingTermsId);
+      try {
+        await hubspot.patch(`/crm/v3/objects/deals/${dealId}`, {
+          properties: { hpl_ns_terms: cleaned },
+        });
+        console.log(`  Updated deal ${dealId} hpl_ns_terms="${cleaned}"`);
+      } catch (e: any) {
+        console.warn(
+          "Warning: failed to set hpl_billing_terms_id (property may not exist):",
           e?.response?.data || e?.message
         );
       }
