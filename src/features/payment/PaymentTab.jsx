@@ -46,16 +46,18 @@ const PaymentTab = ({ netsuiteInternalId }) => {
   const [fullError, setFullError] = useState(null);
   const [fullSuccess, setFullSuccess] = useState(null);
 
-  //  invoice generation states
+  // invoice generation states
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
   const [genSuccess, setGenSuccess] = useState(null);
 
-  //date states
+  // date states
   const [invoiceDates, setInvoiceDates] = useState({}); // { [invoiceId]: 'YYYY-MM-DD' }
   const [savingDateId, setSavingDateId] = useState(null);
   const [originalInvoiceDates, setOriginalInvoiceDates] = useState({});
   const [dateSaveState, setDateSaveState] = useState({});
+
+  const [soCustomerId, setSoCustomerId] = useState(null);
 
   const uniqueInvoicesMap = new Map();
   invoices.forEach((inv) => {
@@ -68,6 +70,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
     if (!uniqueInvoicesMap.has(key)) uniqueInvoicesMap.set(key, inv);
   });
   const uniqueInvoices = Array.from(uniqueInvoicesMap.values());
+  const hasInvoice = uniqueInvoices.length > 0;
 
   const refreshInvoices = useCallback(async () => {
     if (!netsuiteInternalId) return;
@@ -78,6 +81,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
       );
       const data = await res.json();
       setInvoices(data.invoices || []);
+      setSoCustomerId(data.customerId ?? null);
     } catch (err) {
       console.error("Failed to fetch related invoices:", err);
     } finally {
@@ -89,7 +93,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
     refreshInvoices();
   }, [refreshInvoices]);
 
-  //date useeffect
+  // date useEffect
   useEffect(() => {
     if (!invoices?.length) return;
     const map = {};
@@ -106,8 +110,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
     setOriginalInvoiceDates(map);
   }, [invoices]);
 
-  const customerId = invoices?.[0]?.customerId ?? null;
-  const hasInvoice = uniqueInvoices.length > 0;
+  const customerId = invoices?.[0]?.customerId ?? soCustomerId ?? null;
 
   // date save helper
   const saveInvoiceDate = async (id) => {
@@ -131,7 +134,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
     }
   };
 
-  //  generate invoice handler
+  // generate invoice handler
   const handleGenerateInvoice = async () => {
     if (!netsuiteInternalId) return;
     setGenError(null);
@@ -309,7 +312,18 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         justifyContent="flex-start"
         mb={2}
       >
-        {/*  Generate Invoice button */}
+        {/* Deposit now works without invoices because customerId comes from SO */}
+        <Button
+          variant="outlined"
+          onClick={() => {
+            setSelectedPaymentOptionId(null);
+            setOpenDeposit(true);
+          }}
+        >
+          Create Deposit
+        </Button>
+
+        {/* Generate Invoice */}
         <Button
           variant="contained"
           color="secondary"
@@ -323,32 +337,21 @@ const PaymentTab = ({ netsuiteInternalId }) => {
             : "Generate Invoice"}
         </Button>
 
-        <Button
-          variant="outlined"
-          onClick={() => {
-            setSelectedPaymentOptionId(null);
-            setOpenDeposit(true);
-          }}
-          disabled={!customerId}
-        >
-          Create Deposit
-        </Button>
-
+        {/* Full payment still requires an invoice */}
         <Button
           variant="contained"
           onClick={() => {
             setSelectedPaymentOptionId(null);
             setOpenFull(true);
           }}
-          disabled={!customerId}
+          disabled={!customerId || !hasInvoice}
         >
           Make Full Payment
         </Button>
 
-        {!customerId && (
+        {!hasInvoice && (
           <Typography variant="body2" color="text.secondary">
-            (No Invoices for this Sales order yet — buttons enabled once
-            invoices load.)
+            Full payment requires an Invoice. Deposits can be taken without one.
           </Typography>
         )}
       </Box>
@@ -476,6 +479,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         </Alert>
       )}
 
+      {/* CREATE DEPOSIT */}
       <Dialog
         fullWidth
         maxWidth="md"
@@ -499,6 +503,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         </DialogActions>
       </Dialog>
 
+      {/* FULL PAYMENT */}
       <Dialog
         fullWidth
         maxWidth="md"

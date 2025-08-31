@@ -21,33 +21,53 @@ export async function GET(req: NextRequest) {
 
   try {
     const token = await getValidToken();
-    //console.log(token);
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "transient",
+    } as const;
 
-    // Step 1: Get invoice internal IDs linked to the Sales Order
-    const suiteQL = `
+    // 1) SuiteQL for invoices linked to this Sales Order
+    const invoiceQ = `
       SELECT T.id AS invoiceId, T.tranid
       FROM transaction T
       INNER JOIN PreviousTransactionLink PTL ON PTL.NextDoc = T.id
       WHERE T.type = 'CustInvc' AND PTL.PreviousDoc = ${soId}
     `;
 
-    const resp = await axios.post(
-      `${BASE_URL}/query/v1/suiteql`,
-      { q: suiteQL },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          Prefer: "transient",
-        },
-      }
-    );
+    // 2) SuiteQL for Sales Order customer id (entity)
+    const soCustomerQ = `
+      SELECT T.entity AS customerId
+      FROM transaction T
+      WHERE T.id = ${soId}
+    `;
 
-    const invoiceIds = resp.data.items?.map((i: any) => i.invoiceid) || [];
+    const [invResp, soResp] = await Promise.all([
+      axios.post(`${BASE_URL}/query/v1/suiteql`, { q: invoiceQ }, { headers }),
+      axios.post(
+        `${BASE_URL}/query/v1/suiteql`,
+        { q: soCustomerQ },
+        { headers }
+      ),
+    ]);
 
-    // Step 2: Fetch each invoice using REST Record API with expandSubResources=true
-    const invoices = [];
+    const soCustomerId =
+      soResp?.data?.items?.[0]?.customerid != null
+        ? Number(soResp.data.items[0].customerid)
+        : null;
+
+    const invoiceIds: number[] =
+      invResp?.data?.items?.map((i: any) => Number(i.invoiceid)) || [];
+
+    if (!invoiceIds.length) {
+      return new Response(
+        JSON.stringify({ invoices: [], customerId: soCustomerId }),
+        { status: 200 }
+      );
+    }
+
+    const invoices: any[] = [];
     for (const id of invoiceIds) {
       const invoiceResp = await axios.get(
         `${BASE_URL}/record/v1/invoice/${id}?expandSubResources=true`,
@@ -61,32 +81,24 @@ export async function GET(req: NextRequest) {
 
       const data = invoiceResp.data;
 
-      // Step 2a: Get related customer payments using TransactionLine.CreatedFrom
       const paymentsSuiteQL = `
- SELECT
-  T.id AS paymentId,
-  T.tranid AS tranId,
-  T.trandate AS paymentDate,
-  BUILTIN.DF(T.status) AS status,
-  T.total AS amount
-FROM transaction T
-INNER JOIN transactionline TL
-  ON TL.transaction = T.id
-  AND TL.createdfrom = ${data.id}
-WHERE T.type = 'CustPymt'
-`;
+        SELECT
+          T.id AS paymentId,
+          T.tranid AS tranId,
+          T.trandate AS paymentDate,
+          BUILTIN.DF(T.status) AS status,
+          T.total AS amount
+        FROM transaction T
+        INNER JOIN transactionline TL
+          ON TL.transaction = T.id
+          AND TL.createdfrom = ${data.id}
+        WHERE T.type = 'CustPymt'
+      `;
 
       const paymentsResp = await axios.post(
         `${BASE_URL}/query/v1/suiteql`,
         { q: paymentsSuiteQL },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            Prefer: "transient",
-          },
-        }
+        { headers }
       );
 
       const payments =
@@ -97,7 +109,6 @@ WHERE T.type = 'CustPymt'
           amount: p.amount,
           status: p.status,
         })) || [];
-      console.log(" Raw SuiteQL payments:", paymentsResp.data.items);
 
       const lines =
         data.item?.items?.map((line: any) => ({
@@ -116,13 +127,18 @@ WHERE T.type = 'CustPymt'
         total: data.total,
         amountPaid: data.amountPaid,
         amountRemaining: data.amountRemaining,
-        customerId: data.entity.id,
+        customerId: data?.entity?.id ?? soCustomerId,
         lines,
         payments,
       });
     }
 
-    return new Response(JSON.stringify({ invoices }), { status: 200 });
+    return new Response(
+      JSON.stringify({ invoices, customerId: soCustomerId }),
+      {
+        status: 200,
+      }
+    );
   } catch (err: any) {
     console.error(
       " Failed to fetch invoices:",
