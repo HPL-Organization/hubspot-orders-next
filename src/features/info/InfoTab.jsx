@@ -167,9 +167,9 @@ const InfoTab = ({ netsuiteInternalId }) => {
   };
 
   const validateNames = () => {
-    const { firstName, middleName, lastName } = formData;
-    if (!firstName?.trim() || !middleName?.trim() || !lastName?.trim()) {
-      toast.error("First, Middle, and Last name are required.");
+    const { firstName, lastName } = formData;
+    if (!firstName?.trim() || !lastName?.trim()) {
+      toast.error("First and Last name are required.");
       return false;
     }
     return true;
@@ -415,7 +415,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
           name="middleName"
           value={formData.middleName}
           onChange={handleChange}
-          required
         />
         <InputField
           label="Last Name"
