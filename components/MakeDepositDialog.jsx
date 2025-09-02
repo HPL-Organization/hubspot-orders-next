@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useVersapaySession } from "../src/hooks/useVersapaySession";
+import { toast } from "react-toastify";
 
 function formatLocalDate(d = new Date()) {
   const y = d.getFullYear();
@@ -75,11 +76,12 @@ export default function MakeDepositDialog({
           rdJson?.details || rdJson?.error || "Failed to record deposit"
         );
       }
-
+      toast.success("Deposit created");
       onClose && onClose();
       resetVersapaySession();
     } catch (e) {
       setError(e?.message || "Deposit failed");
+      toast.error("Deposit Failed", e?.message);
     } finally {
       setSubmitting(false);
     }

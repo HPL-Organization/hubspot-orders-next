@@ -14,6 +14,7 @@ import {
   TextField,
   Button,
 } from "@mui/material";
+import { toast } from "react-toastify";
 
 function formatLocalDate(d = new Date()) {
   const y = d.getFullYear();
@@ -134,11 +135,12 @@ export default function PaymentDialogOffline({
           data?.details || data?.error || "Failed to record payment"
         );
       }
-
+      toast.success("Payment recorded");
       onPaid && onPaid({ netsuite: data });
       onClose && onClose();
     } catch (e) {
       setError(e?.message || "Failed to record payment");
+      toast.error("Payment not recorded", e?.message);
     } finally {
       setSubmitting(false);
     }

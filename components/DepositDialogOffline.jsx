@@ -10,6 +10,7 @@ import {
   Button,
   Typography,
 } from "@mui/material";
+import { toast } from "react-toastify";
 
 function formatLocalDate(d = new Date()) {
   const y = d.getFullYear();
@@ -97,6 +98,8 @@ export default function DepositDialogOffline({
         throw new Error(
           json?.details || json?.error || "Failed to record deposit"
         );
+
+      toast.success("Deposit created");
       onRecorded?.(json);
       onClose?.();
     } catch (e) {

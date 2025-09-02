@@ -15,6 +15,7 @@ import {
   Button,
 } from "@mui/material";
 import { useVersapaySession } from "../../src/hooks/useVersapaySession";
+import { toast } from "react-toastify";
 
 function formatLocalDate(d = new Date()) {
   const y = d.getFullYear();
@@ -97,11 +98,15 @@ export default function PaymentDialog({
           rpJson?.details || rpJson?.error || "Failed to record payment"
         );
       }
+      toast.success(
+        `Payment recorded: $${amt.toFixed(2)} applied to invoice ${invoiceId}.`
+      );
 
       onClose && onClose();
       resetVersapaySession();
     } catch (e) {
       setError(e?.message || "Payment failed");
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
