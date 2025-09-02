@@ -61,6 +61,7 @@ export async function netsuiteGetAllProductsQL(
       item.displayname,
       item.description,
       item.itemtype,
+      item.incomeaccount,
       pricing.unitprice AS baseprice,
       file.id AS fileid,
       file.name AS filename,
@@ -111,6 +112,7 @@ export async function netsuiteGetAllProductsQL(
         imageUrl: fullImageUrl,
         itemType: mappedType,
         rawItemType: item.itemtype || null,
+        incomeAccount: item.incomeaccount || null,
         available:
           item.quantityavailable !== undefined &&
           item.quantityavailable !== null
@@ -118,7 +120,7 @@ export async function netsuiteGetAllProductsQL(
             : null,
       };
     })
-    .filter((item) => item.itemType !== null);
+    .filter((item) => item.itemType !== null && item.incomeAccount !== null);
 
   console.log(`✅ Loaded ${products.length} products via SuiteQL`);
   return products;
