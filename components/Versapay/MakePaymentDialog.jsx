@@ -106,7 +106,7 @@ export default function PaymentDialog({
       resetVersapaySession();
     } catch (e) {
       setError(e?.message || "Payment failed");
-      toast.error(msg);
+      toast.error("Payment failed");
     } finally {
       setSubmitting(false);
     }

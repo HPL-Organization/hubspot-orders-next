@@ -602,6 +602,17 @@ export default function AddPaymentMethod({
             const auth = await authResp.json();
             if (!authResp.ok) throw auth;
 
+            // Void the $1 auth (best-effort)
+            try {
+              const txId = auth?.payment?.transactionId;
+              if (txId) {
+                await fetch("/api/versapay/void-sale", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ transactionId: txId }),
+                });
+              }
+            } catch {}
             // Save the payment method to NetSuite
             const saveResp = await fetch("/api/netsuite/save-payment-method", {
               method: "POST",
@@ -618,19 +629,7 @@ export default function AddPaymentMethod({
 
             onSaved?.(saveData);
 
-            // Void the $1 auth (best-effort)
-            try {
-              const txId = auth?.payment?.transactionId;
-              if (txId) {
-                await fetch("/api/versapay/void-sale", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ transactionId: txId }),
-                });
-              }
-            } catch {}
-
-            // ⬇️ Only open PaymentDialog if explicitly enabled
+            //  Only open PaymentDialog if explicitly enabled
             if (openPaymentDialogOnSave) {
               setPayToken(result.token);
               setPayOpen(true);
