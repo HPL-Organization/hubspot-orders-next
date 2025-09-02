@@ -135,6 +135,10 @@ function mapNsTypeToReadable(type: string | null): string | null {
       return "non_inventory";
     case "Service":
       return "service";
+    case "Kit":
+      return "inventory";
+    case "Assembly":
+      return "inventory";
     default:
       return null;
   }
