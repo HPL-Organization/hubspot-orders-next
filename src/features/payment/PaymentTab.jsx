@@ -27,6 +27,8 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import AddPaymentMethod from "../../../components/Versapay/AddPaymentMethod";
 import PaymentMethods from "../../../components/Versapay/PaymentMethods";
 
+import CustomerDeposits from "../../../components/CustomerDeposits";
+
 const InvoiceGrid = dynamic(() => import("../../../components/InvoiceGrid"), {
   ssr: false,
 });
@@ -355,7 +357,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
           </Typography>
         )}
       </Box>
-
+      <CustomerDeposits netsuiteInternalId={netsuiteInternalId} />
       {genError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {genError}
