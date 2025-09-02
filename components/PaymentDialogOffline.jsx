@@ -99,20 +99,28 @@ export default function PaymentDialogOffline({
 
     try {
       const dateToUse = trandate || formatLocalDate();
+      const manualOptionMap = {
+        12: 2117, // Shopify
+        9: 10, // HPL PayPal
+        13: 2118, //stripe
+      };
+      const pmId = Number(selectedMethod.id);
+      const mappedPaymentOptionId =
+        manualOptionMap[pmId] ?? Number(selectedMethod.id);
       const body = {
         invoiceInternalId: Number(invoiceId),
         amount: amt,
         undepFunds: false,
         accountId: Number(accountId),
         paymentMethodId: Number(selectedMethod.id),
-        paymentOptionId: Number(selectedMethod.id),
+        paymentOptionId: mappedPaymentOptionId,
         ...(defaultPaymentOptionId
           ? { paymentOptionId: Number(defaultPaymentOptionId) }
           : {}),
         memo: `Offline payment (${selectedMethod.title})`,
         trandate: dateToUse,
       };
-      console.log(body);
+      console.log("Trying to record offline payment", body);
 
       const res = await fetch("/api/netsuite/record-payment", {
         method: "POST",

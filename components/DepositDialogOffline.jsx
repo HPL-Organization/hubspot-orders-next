@@ -63,6 +63,14 @@ export default function DepositDialogOffline({
 
     try {
       const dateToUse = trandate || formatLocalDate();
+      const manualOptionMap = {
+        12: 2117, // Shopify
+        9: 10, // HPL PayPal
+        13: 2118, // Stripe
+      };
+      const pmId = Number(selectedMethod.id);
+      const mappedPaymentOptionId =
+        manualOptionMap[pmId] ?? Number(selectedMethod.id);
 
       const body = {
         salesOrderInternalId: Number(salesOrderInternalId),
@@ -73,7 +81,7 @@ export default function DepositDialogOffline({
         paymentOptionId:
           defaultPaymentOptionId != null
             ? Number(defaultPaymentOptionId)
-            : Number(selectedMethod.id),
+            : mappedPaymentOptionId,
         memo: `Offline deposit (${selectedMethod.title})`,
         trandate: dateToUse,
       };

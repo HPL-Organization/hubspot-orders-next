@@ -50,11 +50,9 @@ export default function MakeDepositDialog({
     setError(null);
 
     try {
-      // 1) Charge in VersaPay (same flow as MakePaymentDialog, just no invoiceId)
-
       const externalId = `HPL_${salesOrderInternalId}_${Date.now()}`;
 
-      // 2) Record Customer Deposit in NetSuite
+      // 1) Record+charge Customer Deposit in NetSuite
       const rdRes = await fetch("/api/netsuite/record-deposit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
