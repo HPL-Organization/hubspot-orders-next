@@ -18,6 +18,9 @@ import {
   TextField,
   InputAdornment,
   Link,
+  Portal,
+  Backdrop,
+  LinearProgress,
 } from "@mui/material";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
@@ -467,7 +470,9 @@ const PaymentTab = ({ netsuiteInternalId }) => {
           />
         </>
       ) : (
-        <div>No invoices related to this sales order.</div>
+        <div className=" text-black">
+          No invoices related to this sales order.
+        </div>
       )}
 
       {fullError && (
@@ -529,6 +534,23 @@ const PaymentTab = ({ netsuiteInternalId }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Global Backdrop */}
+      <Portal>
+        <Backdrop
+          open={generating}
+          sx={{
+            color: "#fff",
+            zIndex: 2147483647,
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          <CircularProgress />
+          <Typography sx={{ fontWeight: 600 }}>Generating invoice…</Typography>
+          <LinearProgress sx={{ width: 320 }} />
+        </Backdrop>
+      </Portal>
     </div>
   );
 };

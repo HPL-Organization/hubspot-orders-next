@@ -1,7 +1,7 @@
 // components/versapay/AddPaymentMethod.jsx
 "use client";
 /* global versapay */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
 import {
   Box,
   Button,
@@ -11,6 +11,9 @@ import {
   DialogActions,
   IconButton,
   CircularProgress,
+  Portal,
+  LinearProgress,
+  Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import PaymentDialog from "./MakePaymentDialog";
@@ -54,6 +57,8 @@ export default function AddPaymentMethod({
   // UI-only
   const [canSubmit, setCanSubmit] = useState(false);
   const [frameLoading, setFrameLoading] = useState(false);
+
+  const [hole, setHole] = useState(null);
 
   const { ensure: ensureVersapaySession, reset: resetVersapaySession } =
     useVersapaySession();
@@ -315,6 +320,37 @@ export default function AddPaymentMethod({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Overlay logic  ---
+  const updateHole = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setHole({
+      top: Math.max(0, Math.floor(r.top)),
+      left: Math.max(0, Math.floor(r.left)),
+      width: Math.floor(r.width),
+      height: Math.floor(r.height),
+      right: Math.floor(r.left + r.width),
+      bottom: Math.floor(r.top + r.height),
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!(showAddUI && submittingUI)) return;
+    updateHole();
+    const onResize = () => updateHole();
+    const onScroll = () => updateHole();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+    const id = setInterval(updateHole, 250);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+      clearInterval(id);
+    };
+  }, [showAddUI, submittingUI, containerKey]);
+  // -------------------------------------------------------------------------
+
   return (
     <Box
       sx={{
@@ -420,6 +456,87 @@ export default function AddPaymentMethod({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Spotlight overlay: block everything EXCEPT the iframe area (for CAPTCHA) */}
+      {showAddUI && submittingUI && hole && (
+        <Portal>
+          <>
+            <Box
+              sx={{
+                position: "fixed",
+                left: 0,
+                right: 0,
+                top: 24,
+                display: "flex",
+                justifyContent: "center",
+                zIndex: 2147483647,
+                pointerEvents: "none",
+              }}
+            >
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  borderRadius: 2,
+                  bgcolor: "rgba(0,0,0,0.6)",
+                  color: "#fff",
+                  minWidth: 300,
+                }}
+              >
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                  Saving payment method… complete CAPTCHA if prompted
+                </Typography>
+                <LinearProgress />
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                position: "fixed",
+                left: 0,
+                top: 0,
+                right: 0,
+                height: hole.top,
+                bgcolor: "rgba(0,0,0,0.35)",
+                zIndex: 2147483646,
+              }}
+            />
+            <Box
+              sx={{
+                position: "fixed",
+                left: 0,
+                top: hole.top,
+                width: hole.left,
+                height: hole.height,
+                bgcolor: "rgba(0,0,0,0.35)",
+                zIndex: 2147483646,
+              }}
+            />
+            <Box
+              sx={{
+                position: "fixed",
+                left: hole.right,
+                top: hole.top,
+                right: 0,
+                height: hole.height,
+                bgcolor: "rgba(0,0,0,0.35)",
+                zIndex: 2147483646,
+              }}
+            />
+            <Box
+              sx={{
+                position: "fixed",
+                left: 0,
+                top: hole.bottom,
+                right: 0,
+                bottom: 0,
+                bgcolor: "rgba(0,0,0,0.35)",
+                zIndex: 2147483646,
+              }}
+            />
+          </>
+        </Portal>
+      )}
 
       <PaymentDialog
         open={payOpen}

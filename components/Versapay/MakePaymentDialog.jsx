@@ -13,6 +13,10 @@ import {
   MenuItem,
   TextField,
   Button,
+  Portal,
+  Backdrop,
+  LinearProgress,
+  CircularProgress,
 } from "@mui/material";
 import { useVersapaySession } from "../../src/hooks/useVersapaySession";
 import { toast } from "react-toastify";
@@ -113,69 +117,90 @@ export default function PaymentDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={() => (!submitting ? onClose?.() : null)}
-      fullWidth
-      maxWidth="sm"
-    >
-      <DialogTitle>Make a Payment</DialogTitle>
-      <DialogContent>
-        <FormControl fullWidth size="small" margin="dense">
-          <InputLabel id="invoice-select-label">Invoice</InputLabel>
-          <Select
-            labelId="invoice-select-label"
-            label="Invoice"
-            value={invoiceId}
-            onChange={(e) => setInvoiceId(e.target.value)}
+    <>
+      <Dialog
+        open={open}
+        onClose={() => (!submitting ? onClose?.() : null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Make a Payment</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth size="small" margin="dense">
+            <InputLabel id="invoice-select-label">Invoice</InputLabel>
+            <Select
+              labelId="invoice-select-label"
+              label="Invoice"
+              value={invoiceId}
+              onChange={(e) => setInvoiceId(e.target.value)}
+            >
+              {invoiceOptions.map((opt) => (
+                <MenuItem key={opt.id} value={opt.id}>
+                  {opt.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TextField
+            fullWidth
+            size="small"
+            margin="dense"
+            label="Amount"
+            type="number"
+            inputProps={{ min: 0, step: "0.01" }}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            margin="dense"
+            label="Payment Date"
+            type="date"
+            value={trandate}
+            onChange={(e) => setTrandate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+
+          {error && (
+            <Typography variant="body2" color="error" mt={1}>
+              {error}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => onClose?.()} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={submitPayment}
+            disabled={submitting || !invoiceId || !amount}
           >
-            {invoiceOptions.map((opt) => (
-              <MenuItem key={opt.id} value={opt.id}>
-                {opt.label}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+            {submitting ? "Processing…" : "Pay"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-        <TextField
-          fullWidth
-          size="small"
-          margin="dense"
-          label="Amount"
-          type="number"
-          inputProps={{ min: 0, step: "0.01" }}
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-        <TextField
-          fullWidth
-          size="small"
-          margin="dense"
-          label="Payment Date"
-          type="date"
-          value={trandate}
-          onChange={(e) => setTrandate(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-        />
-
-        {error && (
-          <Typography variant="body2" color="error" mt={1}>
-            {error}
-          </Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => onClose?.()} disabled={submitting}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          onClick={submitPayment}
-          disabled={submitting || !invoiceId || !amount}
+      {/* Global Backdrop  */}
+      <Portal>
+        <Backdrop
+          open={!!open && submitting}
+          sx={{
+            color: "#fff",
+            zIndex: 2147483647,
+            flexDirection: "column",
+            gap: 2,
+          }}
         >
-          {submitting ? "Processing…" : "Pay"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          <CircularProgress />
+          <Typography sx={{ fontWeight: 600 }}>Recording payment…</Typography>
+          <Box sx={{ width: 320, mt: 1 }}>
+            <LinearProgress />
+          </Box>
+        </Backdrop>
+      </Portal>
+    </>
   );
 }

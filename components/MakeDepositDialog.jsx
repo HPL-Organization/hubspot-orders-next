@@ -8,6 +8,10 @@ import {
   TextField,
   Button,
   Typography,
+  Portal,
+  Backdrop,
+  LinearProgress,
+  CircularProgress,
 } from "@mui/material";
 import { useVersapaySession } from "../src/hooks/useVersapaySession";
 import { toast } from "react-toastify";
@@ -88,52 +92,71 @@ export default function MakeDepositDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={() => (!submitting ? onClose?.() : null)}
-      fullWidth
-      maxWidth="sm"
-    >
-      <DialogTitle>Create Deposit</DialogTitle>
-      <DialogContent>
-        <TextField
-          fullWidth
-          size="small"
-          margin="dense"
-          label="Amount"
-          type="number"
-          inputProps={{ min: 0, step: "0.01" }}
-          value={amount ?? ""}
-          onChange={(e) => setAmount?.(e.target.value)}
-        />
-        <TextField
-          fullWidth
-          size="small"
-          margin="dense"
-          label="Deposit Date"
-          type="date"
-          value={trandate}
-          onChange={(e) => setTrandate(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-        />
-        {error && (
-          <Typography variant="body2" color="error" mt={1}>
-            {error}
-          </Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => onClose?.()} disabled={submitting}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          onClick={submitDeposit}
-          disabled={submitting || !amount}
+    <>
+      <Dialog
+        open={open}
+        onClose={() => (!submitting ? onClose?.() : null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Create Deposit</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            size="small"
+            margin="dense"
+            label="Amount"
+            type="number"
+            inputProps={{ min: 0, step: "0.01" }}
+            value={amount ?? ""}
+            onChange={(e) => setAmount?.(e.target.value)}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            margin="dense"
+            label="Deposit Date"
+            type="date"
+            value={trandate}
+            onChange={(e) => setTrandate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          {error && (
+            <Typography variant="body2" color="error" mt={1}>
+              {error}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => onClose?.()} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={submitDeposit}
+            disabled={submitting || !amount}
+          >
+            {submitting ? "Processing…" : "Charge & Record Deposit"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Global Backdrop  */}
+      <Portal>
+        <Backdrop
+          open={!!open && submitting}
+          sx={{
+            color: "#fff",
+            zIndex: 2147483647,
+            flexDirection: "column",
+            gap: 2,
+          }}
         >
-          {submitting ? "Processing…" : "Charge & Record Deposit"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          <CircularProgress />
+          <Typography sx={{ fontWeight: 600 }}>Recording deposit…</Typography>
+          <LinearProgress sx={{ width: 320 }} />
+        </Backdrop>
+      </Portal>
+    </>
   );
 }
