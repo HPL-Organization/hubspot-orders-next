@@ -78,24 +78,52 @@ async function transformInvoiceToCustomerPayment(
     `${BASE_URL}/invoice/${Number(invoiceId)}/!transform/customerpayment`,
     { method: "POST", headers: nsHeaders(token), body: JSON.stringify(body) }
   );
+
   const txt = await res.text();
   let json: any;
   try {
     json = txt ? JSON.parse(txt) : undefined;
   } catch {}
+
   if (!res.ok) {
+    const errCode =
+      json?.["o:errorCode"] ?? json?.errorCode ?? json?.code ?? undefined;
+
+    const detailsArr = Array.isArray(json?.["o:errorDetails"])
+      ? json["o:errorDetails"].map(
+          (d: any) => d?.message || d?.detail || JSON.stringify(d)
+        )
+      : [];
+
+    const primary =
+      json?.title ||
+      json?.message ||
+      json?.detail ||
+      res.statusText ||
+      "Unknown error";
+
+    const extra =
+      detailsArr.length > 0
+        ? ` | Details: ${detailsArr.join(" | ")}`
+        : txt && !json
+        ? ` | Raw: ${txt.substring(0, 500)}`
+        : "";
+
+    const pretty = `Transform to customerpayment failed${
+      errCode ? ` [${errCode}]` : ""
+    }: ${primary}${extra}`;
+
     const details = json?.["o:errorDetails"] ?? json ?? txt;
-    throw new HttpError(
-      "Transform to customerpayment failed",
-      res.status,
-      details
-    );
+    console.error(pretty, { status: res.status, invoiceId, details });
+    throw new HttpError(pretty, res.status, details);
   }
+
   let id = json?.id ?? json?.internalId ?? json?.result?.id ?? null;
-  if (!id)
+  if (!id) {
     id = extractIdFromLocation(
       res.headers.get("Location") || res.headers.get("location")
     );
+  }
   if (!id) {
     throw new HttpError("Customer payment created but id missing", 502, {
       location: res.headers.get("Location"),

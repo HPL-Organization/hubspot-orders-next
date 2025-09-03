@@ -506,7 +506,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDeposit(false)}>Cancel</Button>
+          <Button onClick={() => setOpenDeposit(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -530,7 +530,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenFull(false)} disabled={submittingFull}>
-            Cancel
+            Close
           </Button>
         </DialogActions>
       </Dialog>

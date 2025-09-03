@@ -1393,7 +1393,7 @@ const OrderTab = ({
               }
               if (netsuiteInternalId === null) {
                 const confirmCreate = await confirmToast(
-                  "Please make sure you saved the customer in netsuite!"
+                  "Please make sure you have verified the billing and shipping address, saved the customer in netsuite!"
                 );
                 if (!confirmCreate) return;
               }
