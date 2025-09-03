@@ -13,7 +13,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
-    console.error("Error saving payment method:", error);
+    console.error("Error saving payment method", {
+      message: error?.message ?? "",
+      status: error?.status ?? "",
+      ns: error?.ns ?? "",
+      body: error?.body ?? "",
+      stack: error?.stack ?? "",
+    });
+
     return NextResponse.json(
       { error: "Failed to save payment method" },
       { status: 500 }

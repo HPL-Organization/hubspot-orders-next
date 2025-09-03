@@ -20,6 +20,8 @@ import ListboxComponent from "../../../components/ListBoxComponent";
 import { Checkbox, FormControlLabel } from "@mui/material";
 import { useRep } from "../../../components/RepContext";
 import { confirmToast } from "../../../components/Toast/ConfirmToast";
+import Tooltip from "@mui/material/Tooltip";
+import FallbacksIndicator from "../../../components/FallBackIndicator";
 
 const OrderTab = ({
   netsuiteInternalId,
@@ -691,6 +693,36 @@ const OrderTab = ({
     });
   }, [rows, availabilityById, availabilityBySku]);
 
+  //ns id fallback from product catalog(by SKU)
+  const skuToNsId = useMemo(() => {
+    const m = new Map();
+    for (const p of productCatalog) {
+      const key = (p?.sku ?? "").toString().trim().toUpperCase();
+      if (!key) continue;
+      const val = String(p.id);
+      if (m.has(key) && m.get(key) !== val) {
+        console.warn(`SKU collision for ${key}: ${m.get(key)} -> ${val}`);
+      }
+      m.set(key, val);
+    }
+    return m;
+  }, [productCatalog]);
+
+  const resolveNsItemId = React.useCallback(
+    (row) => {
+      const skuKey = (row?.sku ?? "").toString().trim().toUpperCase();
+      const bySku = skuKey ? skuToNsId.get(skuKey) : null;
+      if (bySku) return bySku; // avoids stale ns ids
+
+      const explicit = row?.ns_item_id ?? row?.nsItemId ?? null;
+      if (explicit) return String(explicit);
+
+      toast.error("Missing NetSuite item id and unknown SKU for row:", row);
+      return "";
+    },
+    [skuToNsId]
+  );
+
   const columns = [
     { field: "sku", headerName: "SKU", flex: 1, editable: true },
     { field: "productName", headerName: "Product", flex: 2, editable: true },
@@ -1344,134 +1376,191 @@ const OrderTab = ({
         >
           Save to Hubspot
         </Button>
-
-        <Button
-          disabled={creatingOrder}
-          onClick={async () => {
-            // unchanged
-            if (!contactId || !dealId) {
-              toast.error("Missing contact or deal ID.");
-              return;
-            }
-            if (netsuiteInternalId === undefined) {
-              toast.error(
-                "Please wait until NetSuite data has finished loading."
-              );
-              return;
-            }
-            if (netsuiteInternalId === null) {
-              const confirmCreate = await confirmToast(
-                "Please make sure you saved the customer in netsuite!"
-              );
-              if (!confirmCreate) return;
-            }
-
-            const totalContribution = salesTeam.reduce(
-              (sum, member) => sum + Number(member.contribution),
-              0
-            );
-            if (salesTeam.some((member) => !member.id)) {
-              toast.error(
-                "All Sales Team members must have a valid Sales Rep selected."
-              );
-              return;
-            }
-            if (totalContribution < 100) {
-              toast.error("Total sales team contribution must be 100%");
-              return;
-            }
-
-            handleSaveClick();
-            setCreatingOrder(true);
-
-            try {
-              const visibleRows = rows.filter(
-                (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
-              );
-              const lineItems = [...visibleRows, ...deletedRows].map((row) => ({
-                itemId: row.ns_item_id,
-                quantity: Number(row.quantity) || 1,
-                unitPrice: Number(row.unitPrice) || 0,
-                unitDiscount: Number(row.unitDiscount) || 0,
-                isClosed: row.isClosed === true,
-                comment: row.comment || "",
-              }));
-
-              const formattedSalesTeam = useMultiSalesTeam
-                ? salesTeam.map((member) => ({
-                    employee: { id: member.id },
-                    contribution: Number(member.contribution),
-                    isPrimary: member.isPrimary,
-                  }))
-                : [
-                    {
-                      employee: { id: defaultSalesRepId },
-                      contribution: 100,
-                      isPrimary: true,
-                    },
-                  ];
-
-              const payload = {
-                hubspotSoId: dealId,
-                hubspotContactId: contactId,
-                lineItems,
-                shipComplete,
-                salesTeam: { replaceAll: true, items: formattedSalesTeam },
-                salesChannel: selectedSalesChannel?.id ?? null,
-                affiliateId:
-                  selectedAffiliate && !isNoAffiliate(selectedAffiliate)
-                    ? selectedAffiliate.id
-                    : null,
-                salesOrderDate: salesOrderDate || null,
-                dealName: dealName,
-                orderNotes: orderNotes,
-                billingTermsId: billingTermsId,
-              };
-
-              const res = await fetch("/api/netsuite/salesorder", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-              });
-
-              let data;
-              try {
-                data = await res.json();
-              } catch {
-                data = null;
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+          <Button
+            disabled={creatingOrder}
+            onClick={async () => {
+              // unchanged
+              if (!contactId || !dealId) {
+                toast.error("Missing contact or deal ID.");
+                return;
               }
-              if (!res.ok) throw new Error(data?.error || "Unknown error");
+              if (netsuiteInternalId === undefined) {
+                toast.error(
+                  "Please wait until NetSuite data has finished loading."
+                );
+                return;
+              }
+              if (netsuiteInternalId === null) {
+                const confirmCreate = await confirmToast(
+                  "Please make sure you saved the customer in netsuite!"
+                );
+                if (!confirmCreate) return;
+              }
 
-              toast.success(" Sales Order submitted to NetSuite.");
-              if (data?.id) setNetsuiteInternalId(data.id);
-              if (data?.netsuiteTranId) setNetsuiteTranId(data.netsuiteTranId);
+              const totalContribution = salesTeam.reduce(
+                (sum, member) => sum + Number(member.contribution),
+                0
+              );
+              if (salesTeam.some((member) => !member.id)) {
+                toast.error(
+                  "All Sales Team members must have a valid Sales Rep selected."
+                );
+                return;
+              }
+              if (totalContribution < 100) {
+                toast.error("Total sales team contribution must be 100%");
+                return;
+              }
+
+              handleSaveClick();
+              setCreatingOrder(true);
 
               try {
-                await fetch("/api/hubspot/set-deal-stage", {
+                const visibleRows = rows.filter(
+                  (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
+                );
+
+                const rowsForCheck = [...visibleRows, ...deletedRows];
+
+                const preflight = rowsForCheck.map((row, idx) => {
+                  const skuRaw = row?.sku ?? "";
+                  const skuKey = skuRaw.toString().trim().toUpperCase();
+                  const fallbackBySku = skuKey ? skuToNsId.get(skuKey) : null;
+                  const currentExplicit =
+                    row?.ns_item_id ?? row?.nsItemId ?? null;
+                  const resolved = resolveNsItemId(row);
+                  const usedFallback =
+                    Boolean(fallbackBySku) &&
+                    String(resolved) === String(fallbackBySku);
+                  const wouldChange =
+                    String(currentExplicit ?? "") !== String(resolved ?? "");
+
+                  return {
+                    i: idx + 1,
+                    sku: skuRaw,
+                    name: row?.productName ?? "",
+                    current_ns_item_id: currentExplicit ?? "",
+                    fallback_ns_item_id: fallbackBySku ?? "",
+                    resolved_ns_item_id: resolved ?? "",
+                    used_fallback: usedFallback,
+                    would_change: wouldChange,
+                  };
+                });
+
+                const summary = preflight.reduce(
+                  (acc, r) => {
+                    acc.total += 1;
+                    if (r.used_fallback) acc.fallback_used += 1;
+                    if (r.would_change) acc.would_change += 1;
+                    if (!r.resolved_ns_item_id) acc.missing_resolved += 1;
+                    return acc;
+                  },
+                  {
+                    total: 0,
+                    fallback_used: 0,
+                    would_change: 0,
+                    missing_resolved: 0,
+                  }
+                );
+
+                console.groupCollapsed(
+                  `[OrderTab] NS itemId preflight — total=${summary.total}, fallback_used=${summary.fallback_used}, would_change=${summary.would_change}, missing_resolved=${summary.missing_resolved}`
+                );
+                console.table(preflight); // ← shows all rows with fallback_ns_item_id
+                console.groupEnd();
+
+                const lineItems = [...visibleRows, ...deletedRows].map(
+                  (row) => ({
+                    //itemId: row.ns_item_id,
+                    itemId: resolveNsItemId(row),
+                    quantity: Number(row.quantity) || 1,
+                    unitPrice: Number(row.unitPrice) || 0,
+                    unitDiscount: Number(row.unitDiscount) || 0,
+                    isClosed: row.isClosed === true,
+                    comment: row.comment || "",
+                  })
+                );
+
+                const formattedSalesTeam = useMultiSalesTeam
+                  ? salesTeam.map((member) => ({
+                      employee: { id: member.id },
+                      contribution: Number(member.contribution),
+                      isPrimary: member.isPrimary,
+                    }))
+                  : [
+                      {
+                        employee: { id: defaultSalesRepId },
+                        contribution: 100,
+                        isPrimary: true,
+                      },
+                    ];
+
+                const payload = {
+                  hubspotSoId: dealId,
+                  hubspotContactId: contactId,
+                  lineItems,
+                  shipComplete,
+                  salesTeam: { replaceAll: true, items: formattedSalesTeam },
+                  salesChannel: selectedSalesChannel?.id ?? null,
+                  affiliateId:
+                    selectedAffiliate && !isNoAffiliate(selectedAffiliate)
+                      ? selectedAffiliate.id
+                      : null,
+                  salesOrderDate: salesOrderDate || null,
+                  dealName: dealName,
+                  orderNotes: orderNotes,
+                  billingTermsId: billingTermsId,
+                };
+
+                const res = await fetch("/api/netsuite/salesorder", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    dealId,
-                    stage: CLOSED_COMPLETE_STAGE,
-                  }),
+                  body: JSON.stringify(payload),
                 });
-                onHubspotStageClosedWonComplete?.();
-                toast.success(
-                  "Deal moved to 'Closed won - Complete' in HubSpot."
-                );
-              } catch (e) {
-                console.error("Failed to update HubSpot dealstage", e);
+
+                let data;
+                try {
+                  data = await res.json();
+                } catch {
+                  data = null;
+                }
+                if (!res.ok) throw new Error(data?.error || "Unknown error");
+
+                toast.success(" Sales Order submitted to NetSuite.");
+                if (data?.id) setNetsuiteInternalId(data.id);
+                if (data?.netsuiteTranId)
+                  setNetsuiteTranId(data.netsuiteTranId);
+
+                try {
+                  await fetch("/api/hubspot/set-deal-stage", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      dealId,
+                      stage: CLOSED_COMPLETE_STAGE,
+                    }),
+                  });
+                  onHubspotStageClosedWonComplete?.();
+                  toast.success(
+                    "Deal moved to 'Closed won - Complete' in HubSpot."
+                  );
+                } catch (e) {
+                  console.error("Failed to update HubSpot dealstage", e);
+                }
+              } catch (err) {
+                console.error(" Sales Order creation failed:", err);
+                toast.error(" Failed to submit Sales Order.");
+              } finally {
+                setCreatingOrder(false);
               }
-            } catch (err) {
-              console.error(" Sales Order creation failed:", err);
-              toast.error(" Failed to submit Sales Order.");
-            } finally {
-              setCreatingOrder(false);
-            }
-          }}
-        >
-          {creatingOrder ? "Submitting..." : "Mark Closed, send to Netsuite "}
-        </Button>
+            }}
+          >
+            {creatingOrder ? "Submitting..." : "Mark Closed, send to Netsuite "}
+          </Button>
+          {/* Fallbacks readiness indicator */}
+          <FallbacksIndicator ready={allProductsFetched} />
+        </Box>
       </Box>
 
       {/* Loading overlay (unchanged) */}

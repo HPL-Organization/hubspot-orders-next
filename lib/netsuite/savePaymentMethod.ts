@@ -9,7 +9,6 @@ const NETSUITE_ACCOUNT_ID = isSB
   : process.env.NETSUITE_ACCOUNT_ID!;
 const PAYMENT_METHOD_ID = 10; //manual lookup from netsuite, id for payment token
 const RESTLET_URL = `https://${NETSUITE_ACCOUNT_ID}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2437&deploy=1`;
-const accessToken = await getValidToken();
 
 export async function savePaymentMethod(
   customerInternalId: number,
@@ -21,6 +20,7 @@ export async function savePaymentMethod(
     accountType?: string;
   }
 ) {
+  const accessToken = await getValidToken();
   const body: Record<string, any> = {
     customerId: Number(customerInternalId),
     paymentMethodId: PAYMENT_METHOD_ID,
