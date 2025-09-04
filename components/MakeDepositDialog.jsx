@@ -23,6 +23,164 @@ function formatLocalDate(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+function softParseJSON(val) {
+  if (typeof val !== "string") return null;
+  const s = val.trim();
+  if (!s || (s[0] !== "{" && s[0] !== "[")) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+function messageFromObj(o) {
+  if (!o || typeof o !== "object") return null;
+  if (o.message || o.detail || o.title) return o.message || o.detail || o.title;
+  return null;
+}
+
+function extractDetailStringsAny(input, seenCodes) {
+  const out = [];
+
+  const pushMsg = (m) => {
+    if (typeof m === "string") {
+      const t = m.trim();
+      if (t) out.push(t);
+    }
+  };
+
+  const pushFromArr = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const d of arr) {
+      if (!d) continue;
+      if (typeof d === "string") {
+        const parsed = softParseJSON(d);
+        if (parsed && Array.isArray(parsed)) {
+          pushFromArr(parsed);
+        } else if (parsed && typeof parsed === "object") {
+          const msg = messageFromObj(parsed);
+          if (parsed["o:errorCode"] && !seenCodes.code) {
+            seenCodes.code = parsed["o:errorCode"];
+          }
+          pushMsg(msg || JSON.stringify(parsed));
+        } else {
+          pushMsg(d);
+        }
+      } else if (typeof d === "object") {
+        if (d["o:errorCode"] && !seenCodes.code) {
+          seenCodes.code = d["o:errorCode"];
+        }
+        const msg = messageFromObj(d);
+        pushMsg(msg || JSON.stringify(d));
+      }
+    }
+  };
+
+  if (typeof input === "string") {
+    const parsed = softParseJSON(input);
+    if (parsed && Array.isArray(parsed)) {
+      pushFromArr(parsed);
+      return out;
+    }
+    if (parsed && typeof parsed === "object") {
+      const msg = messageFromObj(parsed);
+      if (parsed["o:errorCode"] && !seenCodes.code) {
+        seenCodes.code = parsed["o:errorCode"];
+      }
+      pushMsg(msg || JSON.stringify(parsed));
+      return out;
+    }
+    pushMsg(input);
+    return out;
+  }
+
+  if (!input || typeof input !== "object") return out;
+
+  if (Array.isArray(input["o:errorDetails"]))
+    pushFromArr(input["o:errorDetails"]);
+
+  if (Array.isArray(input.details)) pushFromArr(input.details);
+  if (typeof input.details === "string") {
+    const parsed = softParseJSON(input.details);
+    if (parsed && Array.isArray(parsed)) pushFromArr(parsed);
+    else if (parsed && typeof parsed === "object") {
+      const msg = messageFromObj(parsed);
+      if (parsed["o:errorCode"] && !seenCodes.code) {
+        seenCodes.code = parsed["o:errorCode"];
+      }
+      pushMsg(msg || JSON.stringify(parsed));
+    } else {
+      pushMsg(input.details);
+    }
+  }
+  if (
+    input.details &&
+    typeof input.details === "object" &&
+    !Array.isArray(input.details)
+  ) {
+    const msg = messageFromObj(input.details);
+    if (input.details["o:errorCode"] && !seenCodes.code) {
+      seenCodes.code = input.details["o:errorCode"];
+    }
+    pushMsg(msg || JSON.stringify(input.details));
+  }
+
+  if (Array.isArray(input.errors)) pushFromArr(input.errors);
+  if (Array.isArray(input.messages)) pushFromArr(input.messages);
+
+  const single = input.message || input.detail || input.title;
+  if (single) pushMsg(single);
+
+  return out;
+}
+
+function dig(obj, key) {
+  return obj && typeof obj === "object" ? obj[key] : undefined;
+}
+
+function buildPrettyNsError(json, fallback = "Operation failed") {
+  if (!json) return fallback;
+
+  const primaryCandidate =
+    (typeof json.pretty === "string" && json.pretty.trim()) ||
+    json.title ||
+    json.message ||
+    json.detail ||
+    json.error ||
+    dig(json.payload, "title") ||
+    dig(json.payload, "message") ||
+    dig(json.payload, "detail") ||
+    (typeof json.rawText === "string" ? json.rawText : "") ||
+    (typeof json === "string" ? json : "") ||
+    fallback;
+
+  const seenCodes = {
+    code:
+      json["o:errorCode"] ||
+      json.errorCode ||
+      json.code ||
+      dig(json.payload, "o:errorCode") ||
+      dig(json.payload, "errorCode") ||
+      dig(json.payload, "code") ||
+      undefined,
+  };
+
+  const detailsArr = [
+    ...extractDetailStringsAny(json, seenCodes),
+    ...extractDetailStringsAny(json.payload, seenCodes),
+    ...extractDetailStringsAny(json.raw, seenCodes),
+    ...extractDetailStringsAny(json.rawText, seenCodes),
+  ]
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter((s, i, a) => s && a.indexOf(s) === i && s !== primaryCandidate);
+
+  const errSuffix = seenCodes.code ? ` [${seenCodes.code}]` : "";
+  const detailsSuffix = detailsArr.length ? ` — ${detailsArr.join(" | ")}` : "";
+
+  return `${primaryCandidate}${errSuffix}${detailsSuffix}`;
+}
+
 export default function MakeDepositDialog({
   open,
   onClose,
@@ -57,7 +215,6 @@ export default function MakeDepositDialog({
     try {
       const externalId = `HPL_${salesOrderInternalId}_${Date.now()}`;
 
-      // 1) Record+charge Customer Deposit in NetSuite
       const rdRes = await fetch("/api/netsuite/record-deposit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -74,18 +231,35 @@ export default function MakeDepositDialog({
           trandate: trandate || formatLocalDate(),
         }),
       });
-      const rdJson = await rdRes.json().catch(() => ({}));
-      if (!rdRes.ok) {
-        throw new Error(
-          rdJson?.details || rdJson?.error || "Failed to record deposit"
-        );
+
+      const txt = await rdRes.text();
+      let rdJson = {};
+      try {
+        rdJson = txt ? JSON.parse(txt) : {};
+      } catch {
+        rdJson = { rawText: txt };
       }
+
+      if (!rdRes.ok) {
+        const msg =
+          buildPrettyNsError(
+            rdJson,
+            `Failed to record deposit (HTTP ${rdRes.status})`
+          ) || `Failed to record deposit (HTTP ${rdRes.status})`;
+
+        console.error("Deposit failed", { status: rdRes.status, rdJson, txt });
+
+        setError(msg);
+        return;
+      }
+
       toast.success("Deposit created");
       onClose && onClose();
       resetVersapaySession();
     } catch (e) {
-      setError(e?.message || "Deposit failed");
-      toast.error("Deposit Failed", e?.message);
+      const msg = e?.message || "Deposit failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -121,8 +295,14 @@ export default function MakeDepositDialog({
             onChange={(e) => setTrandate(e.target.value)}
             InputLabelProps={{ shrink: true }}
           />
+
           {error && (
-            <Typography variant="body2" color="error" mt={1}>
+            <Typography
+              variant="body2"
+              color="error"
+              mt={1}
+              sx={{ whiteSpace: "pre-wrap", userSelect: "text" }}
+            >
               {error}
             </Typography>
           )}
@@ -141,7 +321,6 @@ export default function MakeDepositDialog({
         </DialogActions>
       </Dialog>
 
-      {/* Global Backdrop  */}
       <Portal>
         <Backdrop
           open={!!open && submitting}

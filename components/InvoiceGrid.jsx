@@ -376,6 +376,7 @@ export default function InvoiceGrid({
                         <th className="p-2 border text-left">Date</th>
                         <th className="p-2 border text-left">Payment #</th>
                         <th className="p-2 border text-left">Amount</th>
+                        <th className="p-2 border text-left">Method</th>
                         <th className="p-2 border text-left">Status</th>
                       </tr>
                     </thead>
@@ -385,6 +386,9 @@ export default function InvoiceGrid({
                           <td className="p-2 border">{p.paymentDate}</td>
                           <td className="p-2 border">{p.tranId}</td>
                           <td className="p-2 border">{fmtMoney(p.amount)}</td>
+                          <td className="p-2 border">
+                            {p.paymentOption || ""}
+                          </td>
                           <td className="p-2 border">{p.status}</td>
                         </tr>
                       ))}

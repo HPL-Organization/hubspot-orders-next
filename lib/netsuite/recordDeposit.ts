@@ -77,31 +77,61 @@ async function transformSalesOrderToCustomerDeposit(
     `${BASE_URL}/salesorder/${Number(soId)}/!transform/customerdeposit`,
     { method: "POST", headers: nsHeaders(token), body: JSON.stringify(body) }
   );
+
   const txt = await res.text();
   let json: any;
   try {
     json = txt ? JSON.parse(txt) : undefined;
   } catch {}
+
   if (!res.ok) {
+    const errCode =
+      json?.["o:errorCode"] ?? json?.errorCode ?? json?.code ?? undefined;
+
+    const detailsArr = Array.isArray(json?.["o:errorDetails"])
+      ? json["o:errorDetails"].map(
+          (d: any) => d?.message || d?.detail || JSON.stringify(d)
+        )
+      : [];
+
+    const primary =
+      json?.title ||
+      json?.message ||
+      json?.detail ||
+      res.statusText ||
+      "Unknown error";
+
+    const extra =
+      detailsArr.length > 0
+        ? ` | Details: ${detailsArr.join(" | ")}`
+        : txt && !json
+        ? ` | Raw: ${txt.substring(0, 500)}`
+        : "";
+
+    const pretty = `Transform to customerdeposit failed${
+      errCode ? ` [${errCode}]` : ""
+    }: ${primary}${extra}`;
+
     const details = json?.["o:errorDetails"] ?? json ?? txt;
-    throw new HttpError(
-      "Transform to customerdeposit failed",
-      res.status,
-      details
-    );
+    console.error(pretty, { status: res.status, soId, details });
+    throw new HttpError(pretty, res.status, details);
   }
+
   let id = json?.id ?? json?.internalId ?? json?.result?.id ?? null;
-  if (!id)
+  if (!id) {
     id = extractIdFromLocation(
       res.headers.get("Location") || res.headers.get("location")
     );
+  }
   if (!id) {
     throw new HttpError("Customer deposit created but id missing", 502, {
-      location: res.headers.get("Location"),
+      location: res.headers.get("Location") || res.headers.get("location"),
       bodyKeys: json ? Object.keys(json) : [],
       raw: json ?? txt,
     });
   }
+
+  console.info("Customer deposit created", { soId, id });
   return { id, raw: json ?? {} };
 }
 

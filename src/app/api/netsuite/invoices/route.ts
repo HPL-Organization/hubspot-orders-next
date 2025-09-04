@@ -87,7 +87,8 @@ export async function GET(req: NextRequest) {
           T.tranid AS tranId,
           T.trandate AS paymentDate,
           BUILTIN.DF(T.status) AS status,
-          T.total AS amount
+          T.total AS amount,
+          BUILTIN.DF(T.paymentoption) AS paymentOption
         FROM transaction T
         INNER JOIN transactionline TL
           ON TL.transaction = T.id
@@ -108,8 +109,8 @@ export async function GET(req: NextRequest) {
           paymentDate: p.paymentdate,
           amount: p.amount,
           status: p.status,
+          paymentOption: p.paymentoption,
         })) || [];
-
       const lines =
         data.item?.items?.map((line: any) => ({
           itemId: line.item?.id,
