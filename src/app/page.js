@@ -290,6 +290,7 @@ function App() {
         repOptions={repOptions}
         onRepChange={handleRepChange}
         dealStage={effectiveDealStage}
+        netsuiteInternalId={netsuiteInternalId}
       />
       <MainTabs tabs={tabs} />
     </div>

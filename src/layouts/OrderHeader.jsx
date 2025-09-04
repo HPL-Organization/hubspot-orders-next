@@ -42,13 +42,25 @@ const Stat = ({ label, value }) => (
   </div>
 );
 
-const OrderHeader = ({ orderData, repOptions, onRepChange, dealStage }) => {
+const OrderHeader = ({
+  orderData,
+  repOptions,
+  onRepChange,
+  dealStage,
+  netsuiteInternalId,
+}) => {
   const [selectedRep, setSelectedRep] = useState("");
+  const [soUrl, setSoUrl] = useState(null);
 
   const dealStageLabel =
     dealStage != null
       ? DEAL_STAGE_LABELS[String(dealStage)] ?? String(dealStage)
       : "—";
+
+  const showOrderLink =
+    Boolean(soUrl) &&
+    orderData?.orderNumber &&
+    orderData.orderNumber !== "No associated sales order";
 
   useEffect(() => {
     setSelectedRep(orderData.rep || "");
@@ -59,6 +71,27 @@ const OrderHeader = ({ orderData, repOptions, onRepChange, dealStage }) => {
     setSelectedRep(value);
     onRepChange?.(value);
   };
+  useEffect(() => {
+    let ignore = false;
+    async function run() {
+      setSoUrl(null);
+      if (!netsuiteInternalId) return;
+      try {
+        const res = await fetch(
+          `/api/netsuite/so-url?id=${netsuiteInternalId}`
+        );
+        const j = await res.json();
+        if (!res.ok) throw new Error(j?.error || "Failed to build SO URL");
+        if (!ignore) setSoUrl(j.url);
+      } catch (e) {
+        console.error("SO URL fetch failed:", e);
+      }
+    }
+    run();
+    return () => {
+      ignore = true;
+    };
+  }, [netsuiteInternalId]);
 
   return (
     <div className="bg-white border rounded-lg p-4 mb-4 shadow-sm">
@@ -66,8 +99,22 @@ const OrderHeader = ({ orderData, repOptions, onRepChange, dealStage }) => {
         <div className="flex items-center gap-3">
           <div>
             <div className="text-xs text-gray-500">Order #</div>
-            <div className="text-lg font-semibold tracking-wide text-black">
-              {orderData.orderNumber || "—"}
+            <div className="text-lg font-semibold tracking-wide">
+              {showOrderLink ? (
+                <a
+                  href={soUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-700 hover:decoration-solid focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
+                  title="Open Sales Order in NetSuite"
+                >
+                  {orderData.orderNumber}
+                </a>
+              ) : (
+                <span className="text-gray-900">
+                  {orderData.orderNumber || "—"}
+                </span>
+              )}
             </div>
           </div>
 
