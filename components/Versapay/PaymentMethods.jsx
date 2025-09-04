@@ -24,6 +24,7 @@ export default function PaymentMethods({
   onPaid,
   salesOrderInternalId = null,
   onDeposited,
+  onRefreshStatuses,
 }) {
   const [loading, setLoading] = useState(false);
   const [instruments, setInstruments] = useState([]);
@@ -422,6 +423,7 @@ export default function PaymentMethods({
         setInvoiceId={setInvoiceId}
         amount={amount}
         setAmount={setAmount}
+        onRefreshStatuses={onRefreshStatuses}
       />
       {/*  Offline dialog */}
       <PaymentDialogOffline
@@ -433,6 +435,7 @@ export default function PaymentMethods({
         customerId={customerId}
         amount={amount}
         setAmount={setAmount}
+        onRefreshStatuses={onRefreshStatuses}
         selectedMethod={
           selectedOption?.kind === "offline" ? selectedOption : null
         }

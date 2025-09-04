@@ -38,6 +38,7 @@ export default function PaymentDialogOffline({
   selectedMethod,
   defaultPaymentOptionId,
   onPaid,
+  onRefreshStatuses,
 }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -140,6 +141,8 @@ export default function PaymentDialogOffline({
         );
       }
       toast.success("Payment recorded");
+      onRefreshStatuses?.();
+      console.log("calling status refresh", onRefreshStatuses);
       onPaid && onPaid({ netsuite: data });
       onClose && onClose();
     } catch (e) {

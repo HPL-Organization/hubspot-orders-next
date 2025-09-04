@@ -37,6 +37,7 @@ export default function PaymentDialog({
   customerId,
   paymentSource,
   onPaid,
+  onRefreshStatuses,
 }) {
   const { withSession, reset: resetVersapaySession } = useVersapaySession();
   const [submitting, setSubmitting] = useState(false);
@@ -105,6 +106,7 @@ export default function PaymentDialog({
       toast.success(
         `Payment recorded: $${amt.toFixed(2)} applied to invoice ${invoiceId}.`
       );
+      onRefreshStatuses?.();
 
       onClose && onClose();
       resetVersapaySession();

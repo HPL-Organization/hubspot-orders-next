@@ -36,7 +36,7 @@ const InvoiceGrid = dynamic(() => import("../../../components/InvoiceGrid"), {
   ssr: false,
 });
 
-const PaymentTab = ({ netsuiteInternalId }) => {
+const PaymentTab = ({ netsuiteInternalId, onRefreshStatuses }) => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -289,6 +289,7 @@ const PaymentTab = ({ netsuiteInternalId }) => {
             setSelectedPaymentOptionId(id ? Number(id) : null);
           }}
           salesOrderInternalId={netsuiteInternalId}
+          onRefreshStatuses={onRefreshStatuses}
         />
       ) : (
         <Typography variant="body2" color="text.secondary">

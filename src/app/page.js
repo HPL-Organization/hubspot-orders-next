@@ -32,6 +32,12 @@ function App() {
   const [fulfillmentStatus, setFulfillmentStatus] = useState("loading");
   const [hasAnyFulfillment, setHasAnyFulfillment] = useState(null);
 
+  const [statusRefreshTick, setStatusRefreshTick] = useState(0);
+  const bumpStatusRefresh = React.useCallback(() => {
+    setNetsuiteStatus("loading");
+    setStatusRefreshTick((t) => t + 1);
+  }, []);
+
   //deal stage states
   const [dealStage, setDealStage] = useState();
   const [dealStageOverride, setDealStageOverride] = useState(null);
@@ -181,7 +187,7 @@ function App() {
     };
 
     fetchInvoiceStatus();
-  }, [netsuiteInternalId]);
+  }, [netsuiteInternalId, statusRefreshTick]);
 
   //fulfillment status useffect
   useEffect(() => {
@@ -256,7 +262,12 @@ function App() {
             label: "Payment",
             disabled: !hasSalesOrder,
             disabledReason: "Create a NetSuite Sales Order to enable payments.",
-            component: <PaymentTab netsuiteInternalId={netsuiteInternalId} />,
+            component: (
+              <PaymentTab
+                netsuiteInternalId={netsuiteInternalId}
+                onRefreshStatuses={bumpStatusRefresh}
+              />
+            ),
           },
           {
             key: "fulfillment",
