@@ -95,7 +95,13 @@ function App() {
         const { tranid } = await tranidRes.json();
         console.log(" Loaded tranId from API route:", tranid);
         setNetsuiteTranId(tranid);
-
+        if (tranid) {
+          await fetch("/api/hubspot/prepend-tranid", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dealId: dealIdURL, tranid }),
+          });
+        }
         // Fetch internal ID
         const intIdRes = await fetch(`/api/so-int-id?dealId=${dealIdURL}`);
         const { internalId } = await intIdRes.json();

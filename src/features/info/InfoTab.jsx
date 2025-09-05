@@ -8,7 +8,14 @@ import { toast } from "react-toastify";
 import GoogleMapsLoader from "../../../components/GoogleMapsLoader";
 import AddressAutocomplete from "../../../components/AddressAutocomplete";
 
-import { Backdrop, CircularProgress, LinearProgress, Box } from "@mui/material";
+import {
+  Backdrop,
+  CircularProgress,
+  LinearProgress,
+  Box,
+  Checkbox,
+  FormControlLabel,
+} from "@mui/material";
 
 const InfoTab = ({ netsuiteInternalId }) => {
   const searchParams = useSearchParams();
@@ -16,8 +23,23 @@ const InfoTab = ({ netsuiteInternalId }) => {
   console.log("Ns id", netsuiteInternalId);
 
   const [contactId, setContactId] = useState(null);
-
   const [shippingMethodOptions, setShippingMethodOptions] = useState([]);
+
+  const [shippingVerified, setShippingVerified] = useState(false);
+  const [billingVerified, setBillingVerified] = useState(false);
+
+  const HUBSPOT_FLAG_PROPS = {
+    shipping: "hpl_shipping_check",
+    billing: "hpl_billing_check",
+  };
+
+  const toHSText = (v) => (v ? "true" : "false");
+  const fromHSText = (v) => {
+    const s = String(v ?? "")
+      .trim()
+      .toLowerCase();
+    return s === "true" || s === "yes" || s === "1";
+  };
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -42,7 +64,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
       zip: "",
       country: "",
     },
-
     requiredShippingMethod: "",
   });
 
@@ -57,7 +78,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
   const [loaderIdx, setLoaderIdx] = useState(0);
   const [loaderMsgs, setLoaderMsgs] = useState(LOADER_TEXT_DEFAULT);
   const timeoutRef = React.useRef(null);
-  //  rotate loader text
+
+  // rotate loader text
   useEffect(() => {
     if (!saving) return;
 
@@ -65,7 +87,6 @@ const InfoTab = ({ netsuiteInternalId }) => {
 
     const step = (i) => {
       if (i >= loaderMsgs.length - 1) return;
-
       timeoutRef.current = window.setTimeout(() => {
         setLoaderIdx(i + 1);
         step(i + 1);
@@ -122,6 +143,10 @@ const InfoTab = ({ netsuiteInternalId }) => {
           requiredShippingMethod:
             data.properties.required_shipping_method || "",
         }));
+        const s = data.properties?.[HUBSPOT_FLAG_PROPS.shipping];
+        const b = data.properties?.[HUBSPOT_FLAG_PROPS.billing];
+        setShippingVerified(fromHSText(s));
+        setBillingVerified(fromHSText(b));
       } catch (err) {
         toast.error("Failed to fetch contact.");
         console.error("Failed to fetch contact", err);
@@ -207,6 +232,8 @@ const InfoTab = ({ netsuiteInternalId }) => {
         zip: formData.billing.zip,
         country: formData.billing.country,
         required_shipping_method: formData.requiredShippingMethod,
+        [HUBSPOT_FLAG_PROPS.shipping]: toHSText(shippingVerified),
+        [HUBSPOT_FLAG_PROPS.billing]: toHSText(billingVerified),
       },
     };
 
@@ -462,15 +489,22 @@ const InfoTab = ({ netsuiteInternalId }) => {
         </select>
       </div>
 
-      {/* Shipping section (always visible, simple heading) */}
+      {/* Shipping */}
       <h2 className="text-lg font-semibold mb-2 text-black">
         Shipping Address
       </h2>
-      <div className="mb-4">
-        <label className="block text-gray-700 mb-1">
+      <div className="mb-2 flex items-center justify-between">
+        <label className="block text-gray-700">
           <span className="text-blue-500 font-bold">Google</span> Shipping
           Address Lookup
         </label>
+
+        <FormControlLabel
+          control={<Checkbox checked={shippingVerified} disabled />}
+          label="Verified via Google"
+        />
+      </div>
+      <div className="mb-4">
         <GoogleMapsLoader>
           <AddressAutocomplete
             onAddressSelect={(parsed) => {
@@ -479,6 +513,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
               handleAddressChange("shipping", "state", parsed.state);
               handleAddressChange("shipping", "zip", parsed.zip);
               handleAddressChange("shipping", "country", parsed.country);
+              setShippingVerified(true);
             }}
           />
         </GoogleMapsLoader>
@@ -499,14 +534,19 @@ const InfoTab = ({ netsuiteInternalId }) => {
         )}
       </div>
 
-      {/* Billing section (only shown if not same as shipping), simple heading */}
-
+      {/* Billing */}
       <h2 className="text-lg font-semibold mb-2 text-black">Billing Address</h2>
-      <div className="mb-4">
-        <label className="block text-gray-700 mb-1">
+      <div className="mb-2 flex items-center justify-between">
+        <label className="block text-gray-700">
           <span className="text-blue-500 font-bold">Google</span> Billing
           Address Lookup
         </label>
+        <FormControlLabel
+          control={<Checkbox checked={billingVerified} disabled />}
+          label="Verified via Google"
+        />
+      </div>
+      <div className="mb-4">
         <GoogleMapsLoader>
           <AddressAutocomplete
             onAddressSelect={(parsed) => {
@@ -515,6 +555,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
               handleAddressChange("billing", "state", parsed.state);
               handleAddressChange("billing", "zip", parsed.zip);
               handleAddressChange("billing", "country", parsed.country);
+              setBillingVerified(true);
             }}
           />
         </GoogleMapsLoader>
@@ -546,6 +587,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
           Save to NetSuite
         </Button>
       </div>
+
       {/* loader overlay */}
       <Backdrop
         open={saving}
