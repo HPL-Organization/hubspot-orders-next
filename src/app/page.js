@@ -157,42 +157,54 @@ function App() {
   useEffect(() => {
     if (!netsuiteInternalId) return;
 
-    const fetchInvoiceStatus = async () => {
+    const fetchStatus = async () => {
       try {
-        const res = await fetch(
-          `/api/netsuite/invoices?internalId=${netsuiteInternalId}`
-        );
-        const data = await res.json();
+        const [invRes, depRes] = await Promise.all([
+          fetch(`/api/netsuite/invoices?internalId=${netsuiteInternalId}`),
+          fetch(`/api/netsuite/get-deposits?internalId=${netsuiteInternalId}`),
+        ]);
 
-        const invoices = data.invoices || [];
-        console.log("Invoice status getter ", data);
+        const invData = await invRes.json();
+        const depData = await depRes.json();
+
+        const invoices = invData?.invoices ?? [];
+        const deposits = depData?.items ?? [];
+
+        const sum = (arr, key) =>
+          arr.reduce((s, x) => s + (Number(x?.[key]) || 0), 0);
+
+        const totalInvoiced = sum(invoices, "total");
+        const amountPaid = sum(invoices, "amountPaid");
+        const amountRemaining = sum(invoices, "amountRemaining");
+        const depositTotal = sum(deposits, "amount");
 
         if (invoices.length === 0) {
-          setNetsuiteStatus("Not Paid");
+          setNetsuiteStatus(depositTotal > 0 ? "Deposit Received" : "Not Paid");
           return;
         }
 
-        const allPaid = invoices.every(
-          (inv) => Number(inv.amountRemaining) === 0
-        );
-        const anyPaid = invoices.some((inv) => Number(inv.amountPaid) > 0);
-        const anyUnpaid = invoices.some(
-          (inv) => Number(inv.amountRemaining) > 0
-        );
-
-        if (allPaid) {
+        if (amountRemaining <= 1e-6) {
           setNetsuiteStatus("Paid");
-        } else if (anyPaid && anyUnpaid) {
+        } else if (amountPaid > 0) {
           setNetsuiteStatus("Partially Paid");
+        } else if (depositTotal > 0) {
+          setNetsuiteStatus("Partially Paid (Deposit)");
         } else {
           setNetsuiteStatus("Not Paid");
         }
+
+        console.log("NS status breakdown", {
+          totalInvoiced,
+          amountPaid,
+          amountRemaining,
+          depositTotal,
+        });
       } catch (err) {
         console.error("Failed to compute invoice payment status:", err);
       }
     };
 
-    fetchInvoiceStatus();
+    fetchStatus();
   }, [netsuiteInternalId, statusRefreshTick]);
 
   //fulfillment status useffect

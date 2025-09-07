@@ -33,6 +33,7 @@ export default function DepositDialogOffline({
   setAmount,
   onRecorded,
   defaultPaymentOptionId,
+  onRefreshStatuses,
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -104,6 +105,7 @@ export default function DepositDialogOffline({
         );
 
       toast.success("Deposit created");
+      onRefreshStatuses?.();
       onRecorded?.(json);
       onClose?.();
     } catch (e) {

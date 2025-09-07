@@ -190,6 +190,7 @@ export default function MakeDepositDialog({
   salesOrderInternalId,
   amount,
   setAmount,
+  onRefreshStatuses,
 }) {
   const { withSession, reset: resetVersapaySession } = useVersapaySession();
   const [submitting, setSubmitting] = useState(false);
@@ -254,6 +255,7 @@ export default function MakeDepositDialog({
       }
 
       toast.success("Deposit created");
+      onRefreshStatuses?.();
       onClose && onClose();
       resetVersapaySession();
     } catch (e) {

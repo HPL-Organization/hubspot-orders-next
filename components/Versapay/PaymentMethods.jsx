@@ -459,6 +459,7 @@ export default function PaymentMethods({
           setDepOpen(false);
           onDeposited && onDeposited(data);
         }}
+        onRefreshStatuses={onRefreshStatuses}
       />
       {/* NEW: Deposit (offline) */}
       <DepositDialogOffline
@@ -475,6 +476,7 @@ export default function PaymentMethods({
           setDepOfflineOpen(false);
           onDeposited && onDeposited({ versaPay: null, netsuite: json });
         }}
+        onRefreshStatuses={onRefreshStatuses}
       />
     </Box>
   );
