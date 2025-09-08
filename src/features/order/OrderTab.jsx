@@ -23,6 +23,9 @@ import { confirmToast } from "../../../components/Toast/ConfirmToast";
 import Tooltip from "@mui/material/Tooltip";
 import FallbacksIndicator from "../../../components/FallBackIndicator";
 
+const mkRowId = () =>
+  `tmp_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+
 const OrderTab = ({
   netsuiteInternalId,
   repOptions,
@@ -124,9 +127,10 @@ const OrderTab = ({
     [productCatalog]
   );
 
-  const LOADING_FOOTER = { __footer: true };
+  // Row identity: saved rows → HubSpot lineItemId; temp rows → local rowId; fallback → product id.
+  const rowKey = (r) => r?.lineItemId ?? r?.rowId ?? r?.id;
 
-  console.log("fulfilment status from props", hasAnyFulfillment);
+  const LOADING_FOOTER = { __footer: true };
 
   const LOADER_TEXT = [
     "Started creating NetSuite order…",
@@ -217,7 +221,7 @@ const OrderTab = ({
 
     fetchAllProducts();
   }, []);
-  //change-
+
   useEffect(() => {
     let cancelled = false;
 
@@ -242,7 +246,6 @@ const OrderTab = ({
             const existingIds = new Set(prev.map((p) => p.id));
             const newUniqueItems = mapped.filter((p) => !existingIds.has(p.id));
             const finalCatalog = [...prev, ...newUniqueItems];
-
             console.log(
               " Deduplicated merge complete. Final count:",
               finalCatalog.length
@@ -268,7 +271,7 @@ const OrderTab = ({
     return () => {
       cancelled = true;
     };
-  }, [loadingAllProducts]);
+  }, [loadingAllProducts, productCatalog.length, allProductsFetched]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -279,13 +282,12 @@ const OrderTab = ({
         const data = await res.json();
 
         const itemsArray = Array.isArray(data) ? data : data?.items;
-        console.log(itemsArray);
         if (!Array.isArray(itemsArray)) {
           console.error("Unexpected response:", data);
           return;
         }
 
-        // Populate rows for DataGrid
+        // Populate rows for DataGrid (saved rows keyed by HubSpot lineItemId)
         setRows(
           itemsArray.map((item) => {
             const qty = Number(item.quantity) || 0;
@@ -297,7 +299,10 @@ const OrderTab = ({
             return {
               ...item,
               ns_item_id: item.ns_item_id || item.id,
-              lineItemId: item.lineItemId ?? item.id, // Ensure it's preserved
+              // hubspot line item id (what the grid uses as primary id for saved rows)
+              lineItemId: item.lineItemId ?? item.id,
+              // id used by the grid; use lineItemId when present, else product id
+              id: item.lineItemId ? String(item.lineItemId) : String(item.id),
               total,
               fulfilled: fulfilledItemIds.includes(item.ns_item_id || item.id),
             };
@@ -325,13 +330,11 @@ const OrderTab = ({
         if (typeof data?.orderNotes === "string") {
           setOrderNotes(data.orderNotes);
         }
-        console.log("billing terms", data);
         if (data?.billingTermsId) {
           setBillingTermsId(String(data.billingTermsId));
         } else if (data?.billingTerms?.id) {
           setBillingTermsId(String(data.billingTerms.id));
         }
-        console.log("Deal name", dealName);
         if (data?.affiliateId || data?.affiliateName) {
           setInitialAffiliateFromDeal({
             id: data?.affiliateId ? String(data.affiliateId) : null,
@@ -358,12 +361,10 @@ const OrderTab = ({
       if (!dealId) return;
 
       try {
-        console.log("***", netsuiteInternalId);
         const res = await fetch(
           `/api/netsuite/fulfilled-items?internalId=${netsuiteInternalId}`
         );
         const data = await res.json();
-        console.log("fulfilled line items", data);
         setFulfilledItemIds(data.fulfilledItemIds || []);
       } catch (err) {
         console.error(" Failed to load fulfilled item IDs", err);
@@ -371,10 +372,9 @@ const OrderTab = ({
     };
 
     fetchFulfilledItems();
-  }, [dealId]);
+  }, [dealId, netsuiteInternalId]);
 
   //useeffect for fetching sales team from netsuite
-
   useEffect(() => {
     if (!netsuiteInternalId) return;
 
@@ -606,8 +606,8 @@ const OrderTab = ({
               (row) => !fulfilledItemIds.includes(row.ns_item_id || row.id)
             )
             .map((row) => ({
-              id: row.ns_item_id || row.id,
-              lineItemId: row.lineItemId ?? null,
+              id: row.ns_item_id || row.id, // product id
+              lineItemId: row.lineItemId ?? null, // preexisting hubspot id (if any)
               quantity: row.quantity,
               unitPrice: row.unitPrice,
               unitDiscount: row.unitDiscount,
@@ -619,43 +619,49 @@ const OrderTab = ({
       });
 
       const data = await res.json();
-      console.log(" Save Trigger Response:", data.message);
-      console.log(" Match Results:", data.results);
+      console.log(" Save Trigger Response:", data?.message);
+      console.log(" Match Results:", data?.results);
 
-      const resultMap = new Map();
-      data.results.forEach((result) => {
-        if (result.lineItemId) {
-          resultMap.set(result.ns_item_id, result.lineItemId);
-        }
+      // === Duplicate-aware merge ===
+      // Group new HubSpot line item ids by product id (ns_item_id)
+      const groups = new Map(); // key: productId, val: array of new lineItemIds
+      (data?.results ?? []).forEach((r) => {
+        const prodKey = String(r?.ns_item_id ?? r?.id ?? "");
+        const li = r?.lineItemId ? String(r.lineItemId) : null;
+        if (!prodKey || !li) return;
+        if (!groups.has(prodKey)) groups.set(prodKey, []);
+        groups.get(prodKey).push(li);
       });
 
-      setRows((prev) =>
-        prev.map((row) => {
-          const newId = resultMap.get(row.ns_item_id || row.id);
-          if (newId) {
-            return {
-              ...row,
-              id: newId,
-              lineItemId: newId,
-            };
+      setRows((prev) => {
+        //  assign lineItemIds only to rows that don't have one yet.
+        const next = prev.map((row) => ({ ...row }));
+        for (const row of next) {
+          if (!row.lineItemId) {
+            const prodKey = String(row.ns_item_id ?? row.id);
+            const pool = groups.get(prodKey);
+            if (pool?.length) {
+              const li = pool.shift(); // consume exactly one per duplicate
+              row.id = li; // DataGrid primary id for saved rows
+              row.lineItemId = li; // HubSpot line item id
+            }
           }
-          return row;
-        })
-      );
-      triggerOwnerUpdateFromPrimary();
+        }
+        return next;
+      });
 
-      toast.success("Line items saved successfully in Hubspot Deal!");
+      triggerOwnerUpdateFromPrimary();
+      toast.success("Line items saved successfully in HubSpot Deal!");
     } catch (err) {
       console.error(" Save Trigger Failed:", err);
       toast.error("Failed to save line items.");
     }
   };
+
   const uniqueProducts = useMemo(() => {
     const seen = new Set();
     return productCatalog.filter((product) => {
-      if (seen.has(product.id)) {
-        return false; // Skip duplicate products based on SKU
-      }
+      if (seen.has(product.id)) return false;
       seen.add(product.id);
       return true;
     });
@@ -667,13 +673,11 @@ const OrderTab = ({
     productCatalog.forEach((p) =>
       m.set(String(p.id), Number(p.available ?? 0))
     );
-
     return m;
   }, [productCatalog]);
 
   const availabilityBySku = useMemo(() => {
     const m = new Map();
-
     productCatalog.forEach((p) =>
       m.set(String(p.sku), Number(p.available ?? 0))
     );
@@ -682,13 +686,11 @@ const OrderTab = ({
 
   const rowsWithAvailability = useMemo(() => {
     if (!rows?.length) return rows;
-
     return rows.map((r) => {
       const idKey = r.ns_item_id ?? r.nsItemId ?? r.productId ?? r.id;
       const byId = availabilityById.get(String(idKey));
       const bySku = availabilityBySku.get(String(r.sku));
       const avail = byId ?? bySku ?? 0;
-
       return { ...r, quantityAvailable: avail };
     });
   }, [rows, availabilityById, availabilityBySku]);
@@ -749,7 +751,6 @@ const OrderTab = ({
         );
       },
     },
-
     {
       field: "unitPrice",
       headerName: "Unit Price",
@@ -773,7 +774,6 @@ const OrderTab = ({
         return `${Number(val).toFixed(0)}%`;
       },
     },
-
     {
       field: "total",
       headerName: "Total",
@@ -815,66 +815,44 @@ const OrderTab = ({
     },
   ];
 
-  const handleDelete = async (id) => {
-    const matchedRow = rows.find(
-      (row) => row.id === id || row.lineItemId === id
-    );
+  const handleDelete = async (gridId) => {
+    const matchedRow = rows.find((r) => rowKey(r) === gridId);
+    if (!matchedRow) return;
+
     const itemIdToCheck = String(
-      matchedRow?.ns_item_id || matchedRow?.id || id
+      matchedRow.ns_item_id || matchedRow.id || gridId
     );
-    console.log(" Matched row:", matchedRow);
-    console.log(" Checking item ID:", itemIdToCheck);
     if (fulfilledItemIds.includes(itemIdToCheck)) {
       toast.error("Cannot delete a fulfilled line item.");
       return;
     }
 
+    // remove from UI
+    setRows((prev) => prev.filter((r) => rowKey(r) !== gridId));
+
+    if (matchedRow.lineItemId) {
+      setDeletedRows((prev) => [
+        ...prev,
+        { ...matchedRow, isClosed: true, quantity: 0, unitPrice: 0, total: 0 },
+      ]);
+    }
+
     try {
-      // 1. Find the row being deleted
-      const deletedRow = rows.find(
-        (row) => row.id === id || row.lineItemId === id
+      const res = await fetch(
+        `/api/deal-line-items?lineItemId=${matchedRow.lineItemId ?? gridId}`,
+        {
+          method: "DELETE",
+        }
       );
-      if (!deletedRow) return;
-
-      // 2. Remove from UI (rows)
-      setRows((prev) =>
-        prev.filter((row) => row.id !== id && row.lineItemId !== id)
-      );
-
-      // 3. Add to deletedRows with isClosed: true
-      if (deletedRow.lineItemId) {
-        //skip frontend only temp rows (trying to delete non existent items)
-        setDeletedRows((prev) => [
-          ...prev,
-          {
-            ...deletedRow,
-            isClosed: true,
-            quantity: 0,
-            unitPrice: 0,
-            total: 0,
-          },
-        ]);
-      }
-
-      // 4. Remove from grid products
-      setSelectedGridProducts((prev) => prev.filter((p) => p.id !== id));
-
-      // Call backend to delete from HubSpot
-      const res = await fetch(`/api/deal-line-items?lineItemId=${id}`, {
-        method: "DELETE",
-      });
-
       if (!res.ok) {
         const errData = await res.json();
         console.error(" Failed to delete from HubSpot:", errData.error);
-        console.error("Delete failed:", errData.error);
       } else {
         toast.success(
           <span style={{ color: "red", fontWeight: "bold" }}>
             Line item deleted.
           </span>
         );
-        console.log(` Line item ${id} deleted from HubSpot`);
       }
     } catch (err) {
       console.error(" Delete request failed:", err);
@@ -883,11 +861,14 @@ const OrderTab = ({
 
   const handleProcessRowUpdate = (newRow, oldRow) => {
     if (editsLocked) return oldRow ?? newRow;
+
     const qty = Number(newRow.quantity) || 0;
     const price = Number(newRow.unitPrice) || 0;
     const discount = Number(newRow.unitDiscount) || 0;
     const discountedPrice = price * (1 - discount / 100);
     const total = qty * discountedPrice;
+
+    const targetKey = rowKey(newRow);
 
     const updatedRow = {
       ...newRow,
@@ -895,14 +876,13 @@ const OrderTab = ({
       unitDiscount: discount,
     };
 
-    const updatedRows = rows.map((row) =>
-      row.id === newRow.id ? updatedRow : row
+    setRows((prev) =>
+      prev.map((r) => (rowKey(r) === targetKey ? updatedRow : r))
     );
-    setRows(updatedRows);
 
     setSelectedGridProducts((prev) =>
       prev.map((p) =>
-        p.id === newRow.id
+        p.id === (newRow.ns_item_id || newRow.id)
           ? {
               ...p,
               quantity: qty,
@@ -915,7 +895,6 @@ const OrderTab = ({
 
     return updatedRow;
   };
-  console.log(selectedSalesChannel);
 
   const totalSum = rows.reduce((acc, row) => acc + (row.total || 0), 0);
 
@@ -926,7 +905,7 @@ const OrderTab = ({
       const total = discountedPrice * 1;
 
       const productRow = {
-        rowId: Date.now() + Math.random(),
+        rowId: mkRowId(),
         id: product.id,
         ns_item_id: product.id,
         sku: product.sku,
@@ -956,8 +935,6 @@ const OrderTab = ({
     setRows((prev) => [...prev, ...newRows]);
     setSelectedProducts([]);
   };
-
-  console.log(" Final productCatalog size:", productCatalog.length);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -1076,7 +1053,7 @@ const OrderTab = ({
         <DataGrid
           rows={rowsWithAvailability}
           columns={columns}
-          getRowId={(row) => row.id}
+          getRowId={rowKey}
           disableRowSelectionOnClick
           processRowUpdate={handleProcessRowUpdate}
           pageSize={100}
@@ -1086,7 +1063,6 @@ const OrderTab = ({
       </Box>
 
       {/* Totals + quick toggles (single row) */}
-
       <Box
         sx={{
           mt: 2,
@@ -1269,7 +1245,7 @@ const OrderTab = ({
           mb: 2,
           display: "grid",
           gridTemplateColumns: { xs: "1fr", md: "420px 1fr" },
-          gap: 16 / 8, // 2
+          gap: 2,
           alignItems: "start",
         }}
       >
@@ -1467,13 +1443,12 @@ const OrderTab = ({
                 console.groupCollapsed(
                   `[OrderTab] NS itemId preflight — total=${summary.total}, fallback_used=${summary.fallback_used}, would_change=${summary.would_change}, missing_resolved=${summary.missing_resolved}`
                 );
-                console.table(preflight); // ← shows all rows with fallback_ns_item_id
+                console.table(preflight);
                 console.groupEnd();
 
                 const lineItems = [...visibleRows, ...deletedRows].map(
                   (row) => ({
-                    //itemId: row.ns_item_id,
-                    itemId: resolveNsItemId(row),
+                    itemId: resolveNsItemId(row), // NetSuite item id
                     quantity: Number(row.quantity) || 1,
                     unitPrice: Number(row.unitPrice) || 0,
                     unitDiscount: Number(row.unitDiscount) || 0,
