@@ -73,6 +73,7 @@ export default function DepositDialogOffline({
         12: 2117, // Shopify
         9: 10, // HPL PayPal
         13: 2118, // Stripe
+        14: 3219, //ebay
       };
       const pmId = Number(selectedMethod.id);
       const mappedPaymentOptionId =

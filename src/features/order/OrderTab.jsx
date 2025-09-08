@@ -130,6 +130,10 @@ const OrderTab = ({
   // Row identity: saved rows → HubSpot lineItemId; temp rows → local rowId; fallback → product id.
   const rowKey = (r) => r?.lineItemId ?? r?.rowId ?? r?.id;
 
+  //tax
+  const TAX_RATE_PCT = 6.25;
+  const TAX_RATE = TAX_RATE_PCT / 100;
+
   const LOADING_FOOTER = { __footer: true };
 
   const LOADER_TEXT = [
@@ -295,7 +299,7 @@ const OrderTab = ({
             const discount = Number(item.unitDiscount) || 0;
             const discountedPrice = price * (1 - discount / 100);
             const total = qty * discountedPrice;
-
+            console.log("tax", total * TAX_RATE);
             return {
               ...item,
               ns_item_id: item.ns_item_id || item.id,
@@ -304,6 +308,7 @@ const OrderTab = ({
               // id used by the grid; use lineItemId when present, else product id
               id: item.lineItemId ? String(item.lineItemId) : String(item.id),
               total,
+              estimatedTax: total * TAX_RATE,
               fulfilled: fulfilledItemIds.includes(item.ns_item_id || item.id),
             };
           })
@@ -538,7 +543,12 @@ const OrderTab = ({
         const qty = Number(row.quantity) || 0;
         const price = Number(row.unitPrice) || 0;
         const total = qty * price * (1 - d / 100);
-        return { ...row, unitDiscount: d, total };
+        return {
+          ...row,
+          unitDiscount: d,
+          total,
+          estimatedTax: total * TAX_RATE,
+        };
       })
     );
   }, [overallDiscountPct]);
@@ -691,7 +701,9 @@ const OrderTab = ({
       const byId = availabilityById.get(String(idKey));
       const bySku = availabilityBySku.get(String(r.sku));
       const avail = byId ?? bySku ?? 0;
-      return { ...r, quantityAvailable: avail };
+      const total = Number(r.total ?? 0);
+      const estimatedTax = total * TAX_RATE;
+      return { ...r, quantityAvailable: avail, estimatedTax };
     });
   }, [rows, availabilityById, availabilityBySku]);
 
@@ -788,6 +800,7 @@ const OrderTab = ({
         })}`;
       },
     },
+
     {
       field: "actions",
       headerName: "",
@@ -833,7 +846,14 @@ const OrderTab = ({
     if (matchedRow.lineItemId) {
       setDeletedRows((prev) => [
         ...prev,
-        { ...matchedRow, isClosed: true, quantity: 0, unitPrice: 0, total: 0 },
+        {
+          ...matchedRow,
+          isClosed: true,
+          quantity: 0,
+          unitPrice: 0,
+          total: 0,
+          estimatedTax: 0,
+        },
       ]);
     }
 
@@ -874,6 +894,7 @@ const OrderTab = ({
       ...newRow,
       total,
       unitDiscount: discount,
+      estimatedTax: total * TAX_RATE,
     };
 
     setRows((prev) =>
@@ -898,6 +919,13 @@ const OrderTab = ({
 
   const totalSum = rows.reduce((acc, row) => acc + (row.total || 0), 0);
 
+  //tax+grandtotal
+  const estimatedOrderTax = useMemo(() => totalSum * TAX_RATE, [totalSum]);
+  const grandTotal = useMemo(
+    () => totalSum + estimatedOrderTax,
+    [totalSum, estimatedOrderTax]
+  );
+
   const handleAddSelectedProducts = () => {
     const newRows = selectedProducts.map((product) => {
       const discount = product.unitDiscount ?? 0;
@@ -915,6 +943,7 @@ const OrderTab = ({
         unitPrice: product.unitPrice ?? 0,
         unitDiscount: discount,
         total,
+        estimatedTax: total * TAX_RATE,
         imageUrl: product.imageUrl,
       };
 
