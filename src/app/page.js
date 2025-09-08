@@ -31,6 +31,10 @@ function App() {
   const [netsuiteStatus, setNetsuiteStatus] = useState("loading");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("loading");
   const [hasAnyFulfillment, setHasAnyFulfillment] = useState(null);
+  const [contactId, setContactId] = useState(null);
+  const [customerId, setCustomerId] = useState(null);
+  const [customerName, setCustomerName] = useState(null);
+  const [isTaxable, setIsTaxable] = useState(null);
 
   const [statusRefreshTick, setStatusRefreshTick] = useState(0);
   const bumpStatusRefresh = React.useCallback(() => {
@@ -247,6 +251,101 @@ function App() {
     computeFulfillmentStatus();
   }, [netsuiteInternalId]);
 
+  //contactid useffect
+
+  useEffect(() => {
+    if (!dealIdURL) return;
+    let aborted = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/hubspot/get-contact?dealId=${dealIdURL}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        if (aborted) return;
+
+        if (!res.ok) {
+          console.error(
+            "Failed to fetch contactId:",
+            data?.error || res.statusText
+          );
+          setContactId(null);
+          return;
+        }
+
+        setContactId(data?.contactId ?? null);
+        console.log("Loaded contactId:", data?.contactId ?? null);
+      } catch (err) {
+        if (!aborted) {
+          console.error("Error fetching contactId:", err);
+          setContactId(null);
+        }
+      }
+    })();
+
+    return () => {
+      aborted = true;
+    };
+  }, [dealIdURL]);
+
+  //customer details from netsuite fetch
+  useEffect(() => {
+    if (!contactId) {
+      setCustomerId(null);
+      setCustomerName(null);
+      setIsTaxable(null);
+      return;
+    }
+    let aborted = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/netsuite/get-customer?contactId=${contactId}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        if (aborted) return;
+
+        if (!res.ok) {
+          console.error(
+            "Failed to fetch customer:",
+            data?.error || res.statusText
+          );
+          setCustomerId(null);
+          setCustomerName(null);
+          setIsTaxable(null);
+          return;
+        }
+
+        setCustomerId(data?.internalId ?? null);
+        setCustomerName(data?.name ?? null);
+
+        const flag = data?.bodyFields?.taxable ?? null;
+        setIsTaxable(flag === "T" ? true : flag === "F" ? false : null);
+
+        console.log("Customer loaded:", {
+          id: data?.internalId,
+          name: data?.name,
+          taxable: flag,
+        });
+      } catch (err) {
+        if (!aborted) {
+          console.error("Error fetching customer:", err);
+          setCustomerId(null);
+          setCustomerName(null);
+          setIsTaxable(null);
+        }
+      }
+    })();
+
+    return () => {
+      aborted = true;
+    };
+  }, [contactId]);
+
   const dealStatus = "closedWon";
   console.log("**", netsuiteInternalId);
   const hasSalesOrder = !!netsuiteInternalId;
@@ -270,6 +369,7 @@ function App() {
           onHubspotStageClosedWonComplete={() =>
             setDealStageOverride(CLOSED_WON_COMPLETE_ID)
           }
+          isTaxable={isTaxable}
         />
       ),
     },

@@ -16,6 +16,9 @@ import {
   Backdrop,
   LinearProgress,
 } from "@mui/material";
+import { Paper, Stack } from "@mui/material";
+import { Collapse, Divider, Typography } from "@mui/material";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ListboxComponent from "../../../components/ListBoxComponent";
 import { Checkbox, FormControlLabel } from "@mui/material";
 import { useRep } from "../../../components/RepContext";
@@ -34,6 +37,7 @@ const OrderTab = ({
   hasAnyFulfillment,
   onRepChange,
   onHubspotStageClosedWonComplete,
+  isTaxable,
 }) => {
   //make sure internal id loaded-
   if (netsuiteInternalId === undefined) {
@@ -131,7 +135,7 @@ const OrderTab = ({
   const rowKey = (r) => r?.lineItemId ?? r?.rowId ?? r?.id;
 
   //tax
-  const TAX_RATE_PCT = 6.25;
+  const TAX_RATE_PCT = isTaxable ? 6.25 : 0;
   const TAX_RATE = TAX_RATE_PCT / 100;
 
   const LOADING_FOOTER = { __footer: true };
@@ -920,6 +924,13 @@ const OrderTab = ({
   const totalSum = rows.reduce((acc, row) => acc + (row.total || 0), 0);
 
   //tax+grandtotal
+
+  const fmtMoney = (n) =>
+    `$${Number(n || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
   const estimatedOrderTax = useMemo(() => totalSum * TAX_RATE, [totalSum]);
   const grandTotal = useMemo(
     () => totalSum + estimatedOrderTax,
@@ -1097,262 +1108,410 @@ const OrderTab = ({
           mt: 2,
           mb: 1,
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", sm: "1fr auto auto" },
+          gridTemplateColumns: { xs: "1fr", md: "1fr 360px" },
           gap: 1.5,
-          alignItems: "center",
-        }}
-      >
-        <div className="text-right sm:text-left text-xl font-semibold text-slate-700">
-          Total: $
-          {totalSum.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}
-        </div>
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={shipComplete}
-              onChange={(e) => setShipComplete(e.target.checked)}
-              color="primary"
-              className=" text-black"
-            />
-          }
-          label="Ship Complete (send to NetSuite)"
-          sx={{ color: "black", m: 0 }}
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={useMultiSalesTeam}
-              onChange={(e) => setUseMultiSalesTeam(e.target.checked)}
-            />
-          }
-          label="Add Sales team members?"
-          sx={{ color: "black", m: 0 }}
-        />
-
-        <TextField
-          label="Overall Discount (%)"
-          type="number"
-          size="small"
-          value={overallDiscountPct ?? ""}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === "") {
-              setOverallDiscountPct(null);
-              return;
-            }
-            let n = Number(v);
-            if (Number.isNaN(n)) n = 0;
-            n = Math.max(0, Math.min(100, n));
-            setOverallDiscountPct(n);
-          }}
-          InputProps={{ inputProps: { min: 0, max: 100 } }}
-          helperText="Sets all line item discounts"
-          disabled={editsLocked}
-        />
-      </Box>
-
-      {/* Sales Team */}
-      {useMultiSalesTeam && (
-        <div className="mt-4">
-          <h2 className="text-lg font-semibold text-black mb-2">Sales Team</h2>
-          {salesTeam.map((member, index) => (
-            <Box
-              key={index}
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", sm: "220px 160px auto auto" },
-                gap: 1.5,
-                mb: 1.5,
-                alignItems: "center",
-              }}
-            >
-              <TextField
-                select
-                label="Sales Rep"
-                value={member.id}
-                onChange={(e) => {
-                  const newTeam = [...salesTeam];
-                  newTeam[index].id = e.target.value;
-                  setSalesTeam(newTeam);
-                }}
-                size="small"
-              >
-                {repOptions.map((rep) => (
-                  <MenuItem key={rep.id} value={rep.id}>
-                    {rep.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-
-              <TextField
-                label="Contribution %"
-                type="number"
-                inputProps={{ min: 0, max: 100 }}
-                value={member.contribution}
-                onChange={(e) => {
-                  const inputVal = Number(e.target.value);
-                  const currentTotal = salesTeam.reduce(
-                    (sum, m, i) =>
-                      sum + (i === index ? 0 : Number(m.contribution)),
-                    0
-                  );
-                  if (inputVal + currentTotal > 100) {
-                    toast.error("Total contribution cannot exceed 100%");
-                    return;
-                  }
-                  const newTeam = [...salesTeam];
-                  newTeam[index].contribution = inputVal;
-                  setSalesTeam(newTeam);
-                }}
-                size="small"
-              />
-
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={member.isPrimary}
-                    onChange={() => {
-                      setSalesTeam((prev) =>
-                        prev.map((m, i) => ({ ...m, isPrimary: i === index }))
-                      );
-                    }}
-                  />
-                }
-                className=" text-black"
-                label="Primary"
-                sx={{ m: 0 }}
-              />
-
-              {salesTeam.length > 1 && (
-                <MuiButton
-                  size="small"
-                  color="error"
-                  onClick={() =>
-                    setSalesTeam((prev) => prev.filter((_, i) => i !== index))
-                  }
-                >
-                  Remove
-                </MuiButton>
-              )}
-            </Box>
-          ))}
-
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <MuiButton
-              size="small"
-              variant="outlined"
-              disabled={
-                salesTeam.reduce((sum, m) => sum + Number(m.contribution), 0) >=
-                100
-              }
-              onClick={() =>
-                setSalesTeam((prev) => [
-                  ...prev,
-                  { id: "", contribution: 0, isPrimary: false },
-                ])
-              }
-            >
-              Add Member
-            </MuiButton>
-            <div className="text-sm text-gray-600">
-              Total Contribution:{" "}
-              {salesTeam.reduce((s, m) => s + Number(m.contribution), 0)}%
-            </div>
-          </Box>
-        </div>
-      )}
-
-      {/* Left: Sales Channel + Affiliate + SO Date | Right: Order Notes */}
-      <Box
-        sx={{
-          mt: 3,
-          mb: 2,
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "420px 1fr" },
-          gap: 2,
           alignItems: "start",
         }}
       >
-        <Box sx={{ display: "grid", gap: 1.5 }}>
-          <Autocomplete
-            options={salesChannels}
-            loading={salesChannelLoading}
-            value={selectedSalesChannel}
-            onChange={(e, newVal) => setSelectedSalesChannel(newVal ?? null)}
-            getOptionLabel={(opt) => opt.label || opt.value || ""}
-            isOptionEqualToValue={(opt, val) => opt.id === val?.id}
-            noOptionsText={
-              salesChannelLoading ? "Loading channels..." : "No channels found"
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Sales Channel"
-                placeholder="Select sales channel"
-              />
-            )}
-            disabled={editsLocked}
-          />
-          <TextField
-            select
-            label="Billing Terms"
-            value={billingTermsId}
-            onChange={(e) => setBillingTermsId(String(e.target.value))}
-            size="small"
-            fullWidth
-            helperText="defaults to paid before shipping"
-            disabled={editsLocked}
+        {/* LEFT COLUMN */}
+        <Box>
+          {/* Toggles only */}
+          <Stack
+            spacing={1.25}
+            direction={{ xs: "column", sm: "row" }}
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            flexWrap="wrap"
+            useFlexGap
           >
-            {BILLING_TERMS.map((t) => (
-              <MenuItem key={t.id} value={t.id}>
-                {t.label}
-              </MenuItem>
-            ))}
-          </TextField>
-          <Autocomplete
-            options={affiliateOptions}
-            loading={affiliateLoading}
-            value={selectedAffiliate}
-            onChange={(e, newVal) => {
-              setAffiliateInitDone(true);
-              setSelectedAffiliate(
-                !newVal || isNoAffiliate(newVal) ? NO_AFFIL : newVal
-              );
-            }}
-            getOptionLabel={(opt) => opt?.label || ""}
-            isOptionEqualToValue={(opt, val) => opt.id === val?.id}
-            noOptionsText={
-              affiliateLoading ? "Loading affiliates..." : "No affiliates found"
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Affiliate"
-                placeholder="Select affiliate"
-                helperText="Optional"
-              />
-            )}
-            disabled={editsLocked}
-          />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={shipComplete}
+                  onChange={(e) => setShipComplete(e.target.checked)}
+                  color="primary"
+                  className="text-black"
+                />
+              }
+              label="Ship Complete"
+              sx={{ color: "black", m: 0 }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={useMultiSalesTeam}
+                  onChange={(e) => setUseMultiSalesTeam(e.target.checked)}
+                />
+              }
+              label="Add Sales team members?"
+              sx={{ color: "black", m: 0 }}
+            />
+          </Stack>
 
-          <TextField
-            label="Sales Order Date"
-            type="date"
-            value={salesOrderDate}
-            onChange={(e) => setSalesOrderDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            helperText="Optional"
-            size="small"
-            fullWidth
-            disabled={editsLocked}
-          />
+          {/* 🔽 Sales Team appears right under the checkbox */}
+          <Collapse in={useMultiSalesTeam} timeout={200} unmountOnExit>
+            <Box sx={{ mt: 1.5 }}>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  mb: 1,
+                  color: "text.primary",
+                }}
+              >
+                Sales Team
+              </Typography>
+
+              {salesTeam.map((member, index) => (
+                <Box
+                  key={index}
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: {
+                      xs: "1fr",
+                      sm: "220px 160px auto auto",
+                    },
+                    gap: 1.5,
+                    mb: 1.5,
+                    alignItems: "center",
+                  }}
+                >
+                  <TextField
+                    select
+                    label="Sales Rep"
+                    value={member.id}
+                    onChange={(e) => {
+                      const newTeam = [...salesTeam];
+                      newTeam[index].id = e.target.value;
+                      setSalesTeam(newTeam);
+                    }}
+                    size="small"
+                    SelectProps={{
+                      MenuProps: {
+                        // keep the menu positioned correctly in this column
+                        disablePortal: false,
+                        container: () =>
+                          typeof window !== "undefined"
+                            ? document.body
+                            : undefined,
+                        PaperProps: {
+                          sx: { zIndex: (theme) => theme.zIndex.modal + 2 },
+                        },
+                      },
+                    }}
+                  >
+                    {repOptions.map((rep) => (
+                      <MenuItem key={rep.id} value={rep.id}>
+                        {rep.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    label="Contribution %"
+                    type="number"
+                    inputProps={{ min: 0, max: 100 }}
+                    value={member.contribution}
+                    onChange={(e) => {
+                      const inputVal = Number(e.target.value);
+                      const currentTotal = salesTeam.reduce(
+                        (sum, m, i) =>
+                          sum + (i === index ? 0 : Number(m.contribution)),
+                        0
+                      );
+                      if (inputVal + currentTotal > 100) {
+                        toast.error("Total contribution cannot exceed 100%");
+                        return;
+                      }
+                      const newTeam = [...salesTeam];
+                      newTeam[index].contribution = inputVal;
+                      setSalesTeam(newTeam);
+                    }}
+                    size="small"
+                  />
+
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={member.isPrimary}
+                        onChange={() => {
+                          setSalesTeam((prev) =>
+                            prev.map((m, i) => ({
+                              ...m,
+                              isPrimary: i === index,
+                            }))
+                          );
+                        }}
+                      />
+                    }
+                    className=" text-black"
+                    label="Primary"
+                    sx={{ m: 0 }}
+                  />
+
+                  {salesTeam.length > 1 && (
+                    <MuiButton
+                      size="small"
+                      color="error"
+                      onClick={() =>
+                        setSalesTeam((prev) =>
+                          prev.filter((_, i) => i !== index)
+                        )
+                      }
+                    >
+                      Remove
+                    </MuiButton>
+                  )}
+                </Box>
+              ))}
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <MuiButton
+                  size="small"
+                  variant="outlined"
+                  disabled={
+                    salesTeam.reduce(
+                      (sum, m) => sum + Number(m.contribution),
+                      0
+                    ) >= 100
+                  }
+                  onClick={() =>
+                    setSalesTeam((prev) => [
+                      ...prev,
+                      { id: "", contribution: 0, isPrimary: false },
+                    ])
+                  }
+                >
+                  Add Member
+                </MuiButton>
+                <div className="text-sm text-gray-600">
+                  Total Contribution:{" "}
+                  {salesTeam.reduce((s, m) => s + Number(m.contribution), 0)}%
+                </div>
+              </Box>
+
+              <Divider sx={{ my: 1.5 }} />
+            </Box>
+          </Collapse>
+
+          {/* 2-col grid under sales team / toggles */}
+          <Box
+            sx={{
+              mt: 1.25,
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, minmax(0,1fr))",
+              },
+              gap: 1.25,
+              alignItems: "start",
+            }}
+          >
+            {/* Left row 1 */}
+            <Autocomplete
+              options={salesChannels}
+              loading={salesChannelLoading}
+              value={selectedSalesChannel}
+              onChange={(e, newVal) => setSelectedSalesChannel(newVal ?? null)}
+              getOptionLabel={(opt) => opt?.label || opt?.value || ""}
+              isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+              noOptionsText={
+                salesChannelLoading
+                  ? "Loading channels..."
+                  : "No channels found"
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Sales Channel"
+                  placeholder="Select"
+                  size="small"
+                />
+              )}
+              disabled={editsLocked}
+            />
+            {/* Right row 1 */}
+            <TextField
+              label="Overall Discount (%)"
+              type="number"
+              size="small"
+              value={overallDiscountPct ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") return setOverallDiscountPct(null);
+                let n = Number(v);
+                if (Number.isNaN(n)) n = 0;
+                n = Math.max(0, Math.min(100, n));
+                setOverallDiscountPct(n);
+              }}
+              InputProps={{ inputProps: { min: 0, max: 100 } }}
+              fullWidth
+              disabled={editsLocked}
+            />
+            {/* Left row 2 */}
+            <TextField
+              select
+              label="Billing Terms"
+              value={billingTermsId}
+              onChange={(e) => setBillingTermsId(String(e.target.value))}
+              size="small"
+              fullWidth
+              helperText="Defaults to paid before shipping"
+              disabled={editsLocked}
+            >
+              {BILLING_TERMS.map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            {/* Right row 2 */}
+            <Autocomplete
+              options={affiliateOptions}
+              loading={affiliateLoading}
+              value={selectedAffiliate}
+              onChange={(e, newVal) => {
+                setAffiliateInitDone(true);
+                setSelectedAffiliate(
+                  !newVal || isNoAffiliate(newVal) ? NO_AFFIL : newVal
+                );
+              }}
+              getOptionLabel={(opt) => opt?.label || ""}
+              isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+              noOptionsText={
+                affiliateLoading
+                  ? "Loading affiliates..."
+                  : "No affiliates found"
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Affiliate"
+                  placeholder="Select (optional)"
+                  helperText="Optional"
+                  size="small"
+                />
+              )}
+              disabled={editsLocked}
+            />
+            {/* Left row 3 */}
+            <TextField
+              label="Sales Order Date"
+              type="date"
+              value={salesOrderDate}
+              onChange={(e) => setSalesOrderDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              helperText="Optional"
+              size="small"
+              fullWidth
+              disabled={editsLocked}
+            />
+          </Box>
         </Box>
 
+        {/* Right: polished order summary card */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2.25,
+            borderRadius: 3,
+            bgcolor: "background.paper",
+            boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              mb: 1,
+            }}
+          >
+            <Typography
+              variant="subtitle1"
+              fontWeight={700}
+              color="text.primary"
+            >
+              Order Summary
+            </Typography>
+            <Box
+              sx={{
+                fontSize: 12,
+                px: 1,
+                py: 0.25,
+                borderRadius: 999,
+                bgcolor: "rgba(59,130,246,0.08)",
+                color: "rgb(37,99,235)",
+                fontWeight: 600,
+                lineHeight: 1.6,
+              }}
+            >
+              Tax {TAX_RATE_PCT}%
+            </Box>
+          </Box>
+
+          <Divider sx={{ mb: 1.25 }} />
+
+          {/* Rows */}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              rowGap: 0.5,
+              columnGap: 2,
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Subtotal
+            </Typography>
+            <Typography variant="body2" color="text.primary" fontWeight={600}>
+              {fmtMoney(totalSum)}
+            </Typography>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Typography variant="body2" color="text.secondary">
+                Est. Tax
+              </Typography>
+              <Tooltip title="Estimated for display; NetSuite will calculate actual tax at booking.">
+                <InfoOutlinedIcon fontSize="inherit" sx={{ opacity: 0.8 }} />
+              </Tooltip>
+            </Box>
+            <Typography variant="body2" color="text.primary" fontWeight={600}>
+              {fmtMoney(estimatedOrderTax)}
+            </Typography>
+          </Box>
+
+          <Divider sx={{ my: 1.25 }} />
+
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              alignItems: "center",
+            }}
+          >
+            <Typography
+              variant="subtitle2"
+              color="text.primary"
+              fontWeight={800}
+            >
+              Grand Total
+            </Typography>
+            <Typography
+              variant="h6"
+              fontWeight={800}
+              color="text.primary"
+              sx={{ letterSpacing: 0.2 }}
+            >
+              {fmtMoney(grandTotal)}
+            </Typography>
+          </Box>
+        </Paper>
+      </Box>
+
+      {/*  Order Notes */}
+      <Box>
         <TextField
           label="Order notes"
           placeholder="Internal notes for this order…"
