@@ -87,6 +87,7 @@ const PaymentTab = ({ netsuiteInternalId, onRefreshStatuses }) => {
       const data = await res.json();
       setInvoices(data.invoices || []);
       setSoCustomerId(data.customerId ?? null);
+      console.log("invoices", data.invoices);
     } catch (err) {
       console.error("Failed to fetch related invoices:", err);
     } finally {

@@ -10,6 +10,17 @@ const NETSUITE_ACCOUNT_ID = isSB
 //const NETSUITE_ACCOUNT_ID = process.env.NETSUITE_ACCOUNT_ID!;
 const BASE_URL = `https://${NETSUITE_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest`;
 
+const NETSUITE_UI_HOST = (
+  process.env.NETSUITE_UI_HOST || `${NETSUITE_ACCOUNT_ID}.app.netsuite.com`
+)
+  .replace(/^https?:\/\//, "")
+  .trim();
+
+const NS_UI_BASE = `https://${NETSUITE_UI_HOST}`;
+
+const invoiceUrl = (id: number | string) =>
+  `${NS_UI_BASE}/app/accounting/transactions/custinvc.nl?whence=&id=${id}`;
+
 export async function GET(req: NextRequest) {
   const soId = req.nextUrl.searchParams.get("internalId");
 
@@ -131,6 +142,7 @@ export async function GET(req: NextRequest) {
         customerId: data?.entity?.id ?? soCustomerId,
         lines,
         payments,
+        netsuiteUrl: invoiceUrl(data.id),
       });
     }
 

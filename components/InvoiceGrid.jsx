@@ -129,7 +129,30 @@ export default function InvoiceGrid({
   };
 
   const columns = [
-    { field: "invoiceNumber", headerName: "Invoice #", flex: 1 },
+    {
+      field: "invoiceNumber",
+      headerName: "Invoice #",
+      flex: 1,
+      renderCell: (params) => {
+        const href = params.row?.netsuiteUrl;
+        const num = params.value;
+        if (href) {
+          return (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#1976d2", textDecoration: "underline" }}
+              onClick={(e) => e.stopPropagation()} // prevent row focus
+              aria-label={`Open invoice ${num} in NetSuite`}
+            >
+              #{num}
+            </a>
+          );
+        }
+        return <span>#{num}</span>;
+      },
+    },
     { field: "itemId", headerName: "Item ID", flex: 1 },
     { field: "itemName", headerName: "SKU", flex: 2 },
     { field: "quantity", headerName: "Qty", flex: 1 },
@@ -204,6 +227,7 @@ export default function InvoiceGrid({
       alert("Failed to open print dialog for this invoice.");
     }
   };
+
   const handleDownloadPdf = async (inv, rows) => {
     try {
       const [{ default: jsPDF }, autoTableMod] = await Promise.all([
@@ -249,6 +273,7 @@ export default function InvoiceGrid({
       handlePrint(inv, rows);
     }
   };
+
   return (
     <Box sx={{ mt: 4 }}>
       {uniqueInvoices.map((inv) => {
@@ -256,6 +281,7 @@ export default function InvoiceGrid({
           inv.lines?.map((line, index) => ({
             id: `inv-${inv.invoiceId}-${index}`,
             invoiceNumber: inv.tranId,
+            netsuiteUrl: inv.netsuiteUrl || null,
             ...line,
           })) || [];
 
@@ -271,6 +297,7 @@ export default function InvoiceGrid({
               backgroundColor: "#fff",
             }}
           >
+            {/* Header with clickable invoice number */}
             <Box
               sx={{
                 mb: 2,
@@ -281,7 +308,21 @@ export default function InvoiceGrid({
               }}
             >
               <Box sx={{ fontWeight: 600, fontSize: "1rem", color: "#333" }}>
-                Invoice <span style={{ color: "#1976d2" }}>#{inv.tranId}</span>
+                Invoice{" "}
+                {inv.netsuiteUrl ? (
+                  <Tooltip title="Open in NetSuite">
+                    <a
+                      href={inv.netsuiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "#1976d2", textDecoration: "underline" }}
+                    >
+                      #{inv.tranId}
+                    </a>
+                  </Tooltip>
+                ) : (
+                  <span style={{ color: "#1976d2" }}>#{inv.tranId}</span>
+                )}
               </Box>
 
               <Stack direction="row" spacing={1}>
