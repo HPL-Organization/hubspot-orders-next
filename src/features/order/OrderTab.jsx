@@ -120,6 +120,9 @@ const OrderTab = ({
 
   const [useMultiSalesTeam, setUseMultiSalesTeam] = useState(false);
 
+  //so reference
+  const [soReference, setSoReference] = useState("");
+
   const { repEmail } = useRep();
   const defaultSalesRepId =
     repOptions.find((r) => r.email === repEmail)?.id || "-5"; // fallback
@@ -597,14 +600,30 @@ const OrderTab = ({
     return score;
   };
 
+  const todayInEasternYYYYMMDD = () =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
   const handleSaveClick = async () => {
+    const isYMD = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
+
+    const effectiveSoDate = isYMD(salesOrderDate)
+      ? salesOrderDate
+      : salesOrderDate
+      ? ""
+      : todayInEasternYYYYMMDD();
+    console.log("salesOrderDate", salesOrderDate);
     try {
       const res = await fetch("/api/deal-line-items", {
         method: "POST",
         body: JSON.stringify({
           dealId,
           salesChannel: selectedSalesChannel ?? null,
-          salesOrderDate: salesOrderDate || null,
+          salesOrderDate: effectiveSoDate || null,
           orderNotes,
           billingTermsId: billingTermsId || null,
           affiliate:
@@ -1433,6 +1452,16 @@ const OrderTab = ({
               fullWidth
               disabled={editsLocked}
             />
+            <TextField
+              label="Reference text"
+              placeholder=""
+              value={soReference}
+              onChange={(e) => setSoReference(e.target.value)}
+              size="small"
+              fullWidth
+              disabled={editsLocked}
+              sx={{ gridColumn: { xs: "auto", sm: "1 / -1" } }}
+            />
           </Box>
         </Box>
 
@@ -1701,6 +1730,7 @@ const OrderTab = ({
                   dealName: dealName,
                   orderNotes: orderNotes,
                   billingTermsId: billingTermsId,
+                  soReference: soReference || "",
                 };
 
                 const res = await fetch("/api/netsuite/salesorder", {

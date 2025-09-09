@@ -49,7 +49,8 @@ export async function createNetsuiteSalesOrder(
   salesOrderDate?: string | null,
   dealName?: string | null,
   orderNotes?: string | null,
-  billingTermsId?: string | null
+  billingTermsId?: string | null,
+  soReference?: string | ""
 ) {
   const accessToken = await getValidToken();
   const resolvedSalesChannelId =
@@ -91,7 +92,8 @@ export async function createNetsuiteSalesOrder(
     createTrandate,
     dealName,
     orderNotes,
-    resolvedBillingTermsId
+    resolvedBillingTermsId,
+    soReference
   );
 
   try {
@@ -131,7 +133,8 @@ export async function createNetsuiteSalesOrder(
         patchTrandate,
         dealName,
         orderNotes,
-        resolvedBillingTermsId
+        resolvedBillingTermsId,
+        soReference
       );
     } else {
       //console.log("not Existing", existingSOId);
@@ -166,7 +169,8 @@ function buildBasePayload(
   trandate: string,
   dealName: string | null,
   orderNotes?: string,
-  billingTermsId?: string | null
+  billingTermsId?: string | null,
+  soReference?: string | ""
 ) {
   return {
     entity: { id: customerId },
@@ -183,7 +187,9 @@ function buildBasePayload(
     ...(orderNotes != null
       ? { custbody_hpl_ordernote: String(orderNotes) }
       : {}),
-
+    ...(soReference !== undefined
+      ? { custbody_hpl_so_reference: String(soReference) }
+      : {}),
     ...(affiliateId ? { partner: { id: affiliateId } } : {}),
     ...(affiliateId
       ? {
@@ -398,7 +404,8 @@ async function applySalesOrderPatch(
   trandate?: string,
   dealName?: string | null,
   orderNotes?: string | null,
-  billingTermsId?: string | null
+  billingTermsId?: string | null,
+  soReference?: string | ""
 ) {
   // const body: any = {
   //   shipcomplete: shipComplete,
@@ -440,6 +447,10 @@ async function applySalesOrderPatch(
     if (billingTermsId) {
       body.terms = { id: billingTermsId };
     }
+  }
+  if (soReference !== undefined) {
+    const text = String(soReference ?? "").trim();
+    body.custbody_hpl_so_reference = text ? text : "";
   }
   console.log("sending body", body);
 

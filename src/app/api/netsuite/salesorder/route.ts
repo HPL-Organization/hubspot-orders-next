@@ -17,6 +17,7 @@ export async function POST(req: Request) {
       dealName,
       orderNotes,
       billingTermsId,
+      soReference,
     } = body;
 
     if (!hubspotSoId || !hubspotContactId || !Array.isArray(lineItems)) {
@@ -37,7 +38,8 @@ export async function POST(req: Request) {
       salesOrderDate ?? null,
       dealName,
       orderNotes,
-      billingTermsId
+      billingTermsId,
+      soReference
     );
     return new Response(JSON.stringify(result), { status: 200 });
   } catch (err: any) {
