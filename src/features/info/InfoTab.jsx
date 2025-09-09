@@ -17,7 +17,7 @@ import {
   FormControlLabel,
 } from "@mui/material";
 
-const InfoTab = ({ netsuiteInternalId }) => {
+const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
   const searchParams = useSearchParams();
   const dealId = searchParams.get("dealId");
   console.log("Ns id", netsuiteInternalId);
@@ -310,6 +310,7 @@ const InfoTab = ({ netsuiteInternalId }) => {
       }
 
       toast.success("Contact sent to NetSuite!");
+      onCustomerSaved?.();
     } catch (error) {
       console.error("NetSuite Save Error", error);
       toast.error("Something went wrong while saving to NetSuite.");

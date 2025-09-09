@@ -976,6 +976,33 @@ const OrderTab = ({
     setSelectedProducts([]);
   };
 
+  //ns id, tran id fallback helper
+  const lookupSoByDealId = async (dealId) => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const maxTries = 2;
+    let delay = 1000;
+    for (let i = 0; i < maxTries; i++) {
+      try {
+        const r = await fetch(
+          `/api/netsuite/lookup-salesorder?dealId=${encodeURIComponent(dealId)}`
+        );
+        if (r.ok) {
+          const j = await r.json();
+          if (j?.id && (j?.tranid || j?.netsuiteTranId)) {
+            return {
+              id: String(j.id),
+              tranid: String(j.tranid || j.netsuiteTranId),
+            };
+          }
+        }
+      } catch (e) {
+        console.debug("lookup retry", i + 1, e);
+      }
+      await sleep(delay);
+      delay = Math.min(Math.round(delay * 1.5), 4000);
+    }
+    return null;
+  };
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 text-black">Order</h1>
@@ -1691,9 +1718,46 @@ const OrderTab = ({
                 if (!res.ok) throw new Error(data?.error || "Unknown error");
 
                 toast.success(" Sales Order submitted to NetSuite.");
-                if (data?.id) setNetsuiteInternalId(data.id);
-                if (data?.netsuiteTranId)
-                  setNetsuiteTranId(data.netsuiteTranId);
+                let gotId = data?.id ? String(data.id) : null;
+                let gotTran = data?.netsuiteTranId
+                  ? String(data.netsuiteTranId)
+                  : data?.tranid
+                  ? String(data.tranid)
+                  : null;
+                if (gotId) setNetsuiteInternalId(gotId);
+                if (gotTran) setNetsuiteTranId(gotTran);
+                console.log("Hey hey in order");
+                //fallback on custbody_hs_so_id
+                if (!gotId || !gotTran) {
+                  try {
+                    console.log(
+                      "Confirming SO via lookup-salesorder fallback…"
+                    );
+                    const found = await lookupSoByDealId(dealId);
+                    if (found) {
+                      console.log("found", found);
+                      if (!gotId && found.id) {
+                        gotId = found.id;
+                        setNetsuiteInternalId(gotId);
+                      }
+                      if (!gotTran && found.tranid) {
+                        gotTran = found.tranid;
+                        setNetsuiteTranId(gotTran);
+                      }
+                      if (gotId && gotTran) {
+                        console.debug("Confirmed SO from fallback:", {
+                          id: gotId,
+                          tranid: gotTran,
+                        });
+                      }
+                    }
+                  } catch (e) {
+                    console.warn(
+                      "Fallback lookup failed; will rely on later refresh.",
+                      e
+                    );
+                  }
+                }
 
                 try {
                   await fetch("/api/hubspot/set-deal-stage", {

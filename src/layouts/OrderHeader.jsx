@@ -48,10 +48,13 @@ const OrderHeader = ({
   onRepChange,
   dealStage,
   netsuiteInternalId,
+  customerId,
+  customerName,
 }) => {
   const [selectedRep, setSelectedRep] = useState("");
   const [soUrl, setSoUrl] = useState(null);
-
+  const [customerUrl, setCustomerUrl] = useState(null);
+  const showCustomerLink = Boolean(customerUrl) && (customerName || customerId);
   const dealStageLabel =
     dealStage != null
       ? DEAL_STAGE_LABELS[String(dealStage)] ?? String(dealStage)
@@ -92,6 +95,30 @@ const OrderHeader = ({
       ignore = true;
     };
   }, [netsuiteInternalId]);
+
+  //customer url
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      setCustomerUrl(null);
+      if (!customerId) return;
+      try {
+        const qp =
+          `/api/netsuite/customer-url?id=${encodeURIComponent(customerId)}` +
+          (customerName ? `&name=${encodeURIComponent(customerName)}` : "");
+        const res = await fetch(qp);
+        const j = await res.json();
+        if (!res.ok)
+          throw new Error(j?.error || "Failed to build Customer URL");
+        if (!ignore) setCustomerUrl(j.url);
+      } catch (e) {
+        console.error("Customer URL fetch failed:", e);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [customerId, customerName]);
 
   return (
     <div className="bg-white border rounded-lg p-4 mb-4 shadow-sm">
@@ -149,6 +176,24 @@ const OrderHeader = ({
       <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Payment Status" value={orderData.paymentStatus} />
         <Stat label="Fulfillment Status" value={orderData.fulfillmentStatus} />
+        <Stat
+          label="Customer"
+          value={
+            showCustomerLink ? (
+              <a
+                href={customerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-700 hover:underline decoration-from-font focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
+                title="Open Customer in NetSuite"
+              >
+                {customerName || "No customer found"}
+              </a>
+            ) : (
+              customerName || (customerId ? `#${customerId}` : "—")
+            )
+          }
+        />
       </div>
     </div>
   );

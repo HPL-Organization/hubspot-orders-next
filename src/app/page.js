@@ -22,6 +22,10 @@ function App() {
   const [selectedRepEmail, setSelectedRepEmail] = useState("");
   const [netsuiteTranId, setNetsuiteTranId] = useState(null);
   const [netsuiteInternalId, setNetsuiteInternalId] = useState(undefined);
+  const [customerRefreshTick, setCustomerRefreshTick] = useState(0);
+  const refreshCustomer = React.useCallback(() => {
+    setCustomerRefreshTick((t) => t + 1);
+  }, []);
 
   const searchParams = useSearchParams();
   const dealIdURL = searchParams.get("dealId");
@@ -344,7 +348,7 @@ function App() {
     return () => {
       aborted = true;
     };
-  }, [contactId]);
+  }, [contactId, customerRefreshTick]);
 
   const dealStatus = "closedWon";
   console.log("**", netsuiteInternalId);
@@ -353,7 +357,12 @@ function App() {
     {
       key: "info",
       label: "Info",
-      component: <InfoTab netsuiteInternalId={netsuiteInternalId} />,
+      component: (
+        <InfoTab
+          netsuiteInternalId={netsuiteInternalId}
+          onCustomerSaved={refreshCustomer}
+        />
+      ),
     },
     {
       key: "order",
@@ -409,6 +418,8 @@ function App() {
         onRepChange={handleRepChange}
         dealStage={effectiveDealStage}
         netsuiteInternalId={netsuiteInternalId}
+        customerId={customerId}
+        customerName={customerName}
       />
       <MainTabs tabs={tabs} />
     </div>
