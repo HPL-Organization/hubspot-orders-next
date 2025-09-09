@@ -73,11 +73,19 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
     "Saving Billing Address",
     "Almost done…",
   ];
+
   // loader state
   const [saving, setSaving] = useState(false);
   const [loaderIdx, setLoaderIdx] = useState(0);
   const [loaderMsgs, setLoaderMsgs] = useState(LOADER_TEXT_DEFAULT);
   const timeoutRef = React.useRef(null);
+
+  // initial loading flags to disable buttons while fetching
+  const [loadingContact, setLoadingContact] = useState(false);
+  const [loadingShippingOptions, setLoadingShippingOptions] = useState(false);
+
+  // unified busy flag for disabling buttons
+  const isBusy = saving || loadingContact || loadingShippingOptions;
 
   // rotate loader text
   useEffect(() => {
@@ -107,6 +115,7 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
     if (!dealId) return;
 
     const fetchContact = async () => {
+      setLoadingContact(true);
       try {
         const res = await fetch(`/api/contact?dealId=${dealId}`);
         const data = await res.json();
@@ -150,6 +159,8 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
       } catch (err) {
         toast.error("Failed to fetch contact.");
         console.error("Failed to fetch contact", err);
+      } finally {
+        setLoadingContact(false);
       }
     };
 
@@ -158,6 +169,7 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
 
   useEffect(() => {
     const fetchShippingOptions = async () => {
+      setLoadingShippingOptions(true);
       try {
         const res = await fetch("/api/shipping-method-options");
         const data = await res.json();
@@ -167,6 +179,8 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
       } catch (error) {
         console.error("Error fetching shipping method options", error);
         toast.error("Failed to fetch shipping method options.");
+      } finally {
+        setLoadingShippingOptions(false);
       }
     };
 
@@ -202,6 +216,7 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
 
   // Save to HubSpot
   const handleSaveHubSpot = async () => {
+    if (isBusy) return;
     if (!contactId) {
       toast.error("Contact ID not available.");
       return;
@@ -261,6 +276,7 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
 
   // Save to NetSuite
   const handleSaveNetSuite = async () => {
+    if (isBusy) return;
     if (!contactId) {
       toast.error("Contact ID not available.");
       return;
@@ -321,6 +337,7 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
 
   // Save both
   const handleSave = async () => {
+    if (isBusy) return;
     if (!contactId) {
       toast.error("Contact ID not available.");
       return;
@@ -422,10 +439,21 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
         <Button
           onClick={handleSaveHubSpot}
           className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]! hover:bg-[#e76445]!"
+          disabled={isBusy} // NEW
+          aria-disabled={isBusy} // NEW
+          aria-busy={isBusy} // NEW
+          type="button" // NEW
         >
           Save to HubSpot
         </Button>
-        <Button onClick={handleSaveNetSuite} className="mr-4 px-3 py-1 text-sm">
+        <Button
+          onClick={handleSaveNetSuite}
+          className="mr-4 px-3 py-1 text-sm"
+          disabled={isBusy} // NEW
+          aria-disabled={isBusy} // NEW
+          aria-busy={isBusy} // NEW
+          type="button" // NEW
+        >
           Save to NetSuite
         </Button>
       </div>
@@ -581,10 +609,21 @@ const InfoTab = ({ netsuiteInternalId, onCustomerSaved }) => {
         <Button
           onClick={handleSaveHubSpot}
           className="mr-1 px-3 py-1 text-sm bg-[#FF7A59]! hover:bg-[#e76445]!"
+          disabled={isBusy}
+          aria-disabled={isBusy}
+          aria-busy={isBusy}
+          type="button"
         >
           Save to HubSpot
         </Button>
-        <Button onClick={handleSaveNetSuite} className="mr-4 px-3 py-1 text-sm">
+        <Button
+          onClick={handleSaveNetSuite}
+          className="mr-4 px-3 py-1 text-sm"
+          disabled={isBusy}
+          aria-disabled={isBusy}
+          aria-busy={isBusy}
+          type="button"
+        >
           Save to NetSuite
         </Button>
       </div>
