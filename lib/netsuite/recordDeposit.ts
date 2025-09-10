@@ -246,57 +246,28 @@ export async function recordDepositForSalesOrder(
     );
   }
 
-  let created: { id: number | string; raw: any; mode: "transform" | "direct" };
-  try {
-    const body: Record<string, any> = {
-      payment: amount,
-      undepFunds,
-      ...(accountId ? { account: { id: Number(accountId) } } : {}),
-      ...(paymentOptionId
-        ? { paymentOption: { id: Number(paymentOptionId) } }
-        : {}),
-      ...(paymentMethodId && !paymentOptionId
-        ? { paymentMethod: { id: Number(paymentMethodId) } }
-        : {}),
-      ...(trandate ? { trandate } : {}),
-      ...(memo ? { memo } : {}),
-      ...(externalId ? { externalId } : {}),
-      ...(typeof exchangeRate === "number" ? { exchangeRate } : {}),
-      ...extraFields,
-    };
-    const { id, raw } = await transformSalesOrderToCustomerDeposit(
-      salesOrderInternalId,
-      body
-    );
-    created = { id, raw, mode: "transform" };
-  } catch {
-    const customerId = await fetchSalesOrderEntityId(salesOrderInternalId);
-    const createBody: Record<string, any> = {
-      customer: { id: customerId },
-      salesOrder: { id: Number(salesOrderInternalId) },
-      payment: amount,
-      undepFunds,
-      ...(accountId ? { account: { id: Number(accountId) } } : {}),
-      ...(paymentOptionId
-        ? { paymentOption: { id: Number(paymentOptionId) } }
-        : {}),
-      ...(paymentMethodId && !paymentOptionId
-        ? { paymentMethod: { id: Number(paymentMethodId) } }
-        : {}),
-      ...(trandate ? { trandate } : {}),
-      ...(memo ? { memo } : {}),
-      ...(externalId ? { externalId } : {}),
-      ...(typeof exchangeRate === "number" ? { exchangeRate } : {}),
-      ...extraFields,
-    };
-    const { id, raw } = await createCustomerDepositDirect(createBody);
-    created = { id, raw, mode: "direct" };
-  }
+  const customerId = await fetchSalesOrderEntityId(salesOrderInternalId);
 
-  await patchCustomerDepositHeader(created.id, {
-    salesOrder: { id: Number(salesOrderInternalId) },
-  });
+  const createBody: Record<string, any> = {
+    customer: { id: customerId },
+    payment: amount,
+    undepFunds,
+    ...(accountId ? { account: { id: Number(accountId) } } : {}),
+    ...(paymentOptionId
+      ? { paymentOption: { id: Number(paymentOptionId) } }
+      : {}),
+    ...(paymentMethodId && !paymentOptionId
+      ? { paymentMethod: { id: Number(paymentMethodId) } }
+      : {}),
+    ...(trandate ? { trandate } : {}),
+    ...(memo ? { memo } : {}),
+    ...(externalId ? { externalId } : {}),
+    ...(typeof exchangeRate === "number" ? { exchangeRate } : {}),
+    ...extraFields,
+  };
 
-  const final = await fetchCustomerDeposit(created.id);
-  return { id: created.id, raw: final, mode: created.mode };
+  const { id } = await createCustomerDepositDirect(createBody);
+
+  const final = await fetchCustomerDeposit(id);
+  return { id, raw: final, mode: "direct" };
 }
