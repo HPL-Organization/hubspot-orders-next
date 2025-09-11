@@ -62,6 +62,10 @@ const PaymentTab = ({ netsuiteInternalId, onRefreshStatuses }) => {
   const [originalInvoiceDates, setOriginalInvoiceDates] = useState({});
   const [dateSaveState, setDateSaveState] = useState({});
 
+  //deposits
+  const [deposits, setDeposits] = useState([]);
+  const [unappliedDeposits, setUnappliedDeposits] = useState([]);
+
   const [soCustomerId, setSoCustomerId] = useState(null);
 
   const uniqueInvoicesMap = new Map();
@@ -87,6 +91,8 @@ const PaymentTab = ({ netsuiteInternalId, onRefreshStatuses }) => {
       const data = await res.json();
       setInvoices(data.invoices || []);
       setSoCustomerId(data.customerId ?? null);
+      setDeposits(data.deposits || []);
+      setUnappliedDeposits(data.unappliedDeposits || []);
       console.log("invoices", data.invoices);
     } catch (err) {
       console.error("Failed to fetch related invoices:", err);
@@ -362,7 +368,11 @@ const PaymentTab = ({ netsuiteInternalId, onRefreshStatuses }) => {
           </Typography>
         )}
       </Box>
-      <CustomerDeposits netsuiteInternalId={netsuiteInternalId} />
+      <CustomerDeposits
+        netsuiteInternalId={netsuiteInternalId}
+        deposits={deposits}
+        unappliedDeposits={unappliedDeposits}
+      />
       {genError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {genError}

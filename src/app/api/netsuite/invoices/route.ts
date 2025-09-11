@@ -20,6 +20,10 @@ const NS_UI_BASE = `https://${NETSUITE_UI_HOST}`;
 
 const invoiceUrl = (id: number | string) =>
   `${NS_UI_BASE}/app/accounting/transactions/custinvc.nl?whence=&id=${id}`;
+const depositUrl = (id: number | string) =>
+  `${NS_UI_BASE}/app/accounting/transactions/custdep.nl?whence=&id=${id}`;
+const salesOrderUrl = (id: number | string) =>
+  `${NS_UI_BASE}/app/accounting/transactions/salesord.nl?whence=&id=${id}`;
 
 export async function GET(req: NextRequest) {
   const soId = req.nextUrl.searchParams.get("internalId");
@@ -71,13 +75,109 @@ export async function GET(req: NextRequest) {
     const invoiceIds: number[] =
       invResp?.data?.items?.map((i: any) => Number(i.invoiceid)) || [];
 
-    if (!invoiceIds.length) {
-      return new Response(
-        JSON.stringify({ invoices: [], customerId: soCustomerId }),
-        { status: 200 }
+    // if (!invoiceIds.length) {
+    //   return new Response(
+    //     JSON.stringify({ invoices: [], customerId: soCustomerId }),
+    //     { status: 200 }
+    //   );
+    // }
+    const customerId = soCustomerId;
+    let deposits: any[] = [];
+    if (customerId) {
+      // 1) Get deposits for this customer
+      const depositsQ = `
+    SELECT
+      T.id AS depositId,
+      T.tranid AS tranId,
+      T.trandate AS trandate,
+      BUILTIN.DF(T.status) AS status,
+      T.total AS total
+    FROM transaction T
+    WHERE T.type = 'CustDep'
+      AND T.entity = ${Number(customerId)}
+    ORDER BY T.trandate DESC
+  `;
+      const depResp = await axios.post(
+        `${BASE_URL}/query/v1/suiteql`,
+        { q: depositsQ },
+        { headers }
       );
+      const depItems = depResp?.data?.items || [];
+
+      if (depItems.length) {
+        // 2) Map deposits -> Sales Order via PreviousTransactionLink
+        const depositIds = depItems
+          .map((d: any) => Number(d.depositid))
+          .filter((n: any) => Number.isFinite(n));
+        let linkMap = new Map<
+          number,
+          { soId: number; soTranId: string | null }
+        >();
+
+        if (depositIds.length) {
+          const linkQ = `
+        SELECT
+          PTL.NextDoc AS depositId,
+          PTL.PreviousDoc AS soId,
+          BUILTIN.DF(PTL.PreviousDoc) AS soTranId
+        FROM PreviousTransactionLink PTL
+        WHERE PTL.NextDoc IN (${depositIds.join(",")})
+      `;
+          const linkResp = await axios.post(
+            `${BASE_URL}/query/v1/suiteql`,
+            { q: linkQ },
+            { headers }
+          );
+          const linkItems = linkResp?.data?.items || [];
+          for (const r of linkItems) {
+            const did = Number(r.depositid);
+            const soId = Number(r.soid);
+            const soTranId = r.sotranid || null;
+            if (Number.isFinite(did) && Number.isFinite(soId)) {
+              linkMap.set(did, { soId, soTranId });
+            }
+          }
+        }
+
+        // 3) Classify status and build output
+        deposits = depItems.map((d: any) => {
+          const depositId = Number(d.depositid);
+          const statusStr = String(d.status || "");
+          const isFullyApplied =
+            /applied/i.test(statusStr) && /fully/i.test(statusStr);
+          const isPartiallyApplied = /partially\s*applied/i.test(statusStr);
+          // "Unapplied" in the sense of still having remaining value: anything not Fully Applied
+          const isUnapplied = !isFullyApplied;
+
+          const link = linkMap.get(depositId) || null;
+          const isAppliedToSO = !!link;
+          const isUnappliedToSO = !isAppliedToSO;
+
+          return {
+            depositId,
+            tranId: d.tranid,
+            trandate: d.trandate,
+            status: statusStr,
+            total: Number(d.total ?? 0),
+            appliedTo: link
+              ? {
+                  soId: link.soId,
+                  soTranId: link.soTranId,
+                  netsuiteUrl: salesOrderUrl(link.soId),
+                }
+              : null,
+            isFullyApplied,
+            isPartiallyApplied,
+            isAppliedToSO,
+            isUnapplied,
+            isUnappliedToSO,
+            netsuiteUrl: depositUrl(depositId),
+          };
+        });
+      }
     }
 
+    const unappliedDeposits = deposits.filter((d) => d.isUnappliedToSO);
     const invoices: any[] = [];
     for (const id of invoiceIds) {
       const invoiceResp = await axios.get(
@@ -147,7 +247,12 @@ export async function GET(req: NextRequest) {
     }
 
     return new Response(
-      JSON.stringify({ invoices, customerId: soCustomerId }),
+      JSON.stringify({
+        invoices,
+        deposits,
+        unappliedDeposits,
+        customerId: soCustomerId,
+      }),
       {
         status: 200,
       }
