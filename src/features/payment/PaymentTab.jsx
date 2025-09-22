@@ -372,6 +372,9 @@ const PaymentTab = ({ netsuiteInternalId, onRefreshStatuses }) => {
         netsuiteInternalId={netsuiteInternalId}
         deposits={deposits}
         unappliedDeposits={unappliedDeposits}
+        invoices={uniqueInvoices}
+        customerId={customerId}
+        onApplied={refreshInvoices}
       />
       {genError && (
         <Alert severity="error" sx={{ mb: 2 }}>
