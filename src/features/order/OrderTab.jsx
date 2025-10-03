@@ -1,5 +1,11 @@
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { DataGrid } from "@mui/x-data-grid";
 import Button from "../../../components/button";
 import { useSearchParams } from "next/navigation";
@@ -132,6 +138,30 @@ const OrderTab = ({
   const memoizedProductCatalog = useMemo(
     () => productCatalog,
     [productCatalog]
+  );
+
+  // Auto rep assignment for Amazon, ebay, Live event
+  const [manualRepOverride, setManualRepOverride] = useState(false);
+  const lastAutoAssignedEmailRef = useRef(null);
+
+  const REP_BY_CHANNEL = {
+    amazon: "Amazon",
+    ebay: "Ebay",
+    "live events": "Live Event",
+    "live event agates": "Live Event",
+    "live event cabochons": "Live Event",
+    "live event interior design": "Live Event",
+    "live event minerals": "Live Event",
+    "live event rough rock": "Live Event",
+    "live event spheres": "Live Event",
+  };
+
+  const findRepByName = useCallback(
+    (name) =>
+      repOptions.find(
+        (r) => (r?.name || "").trim().toLowerCase() === name.toLowerCase()
+      ) || null,
+    [repOptions]
   );
 
   // Row identity: saved rows → HubSpot lineItemId; temp rows → local rowId; fallback → product id.
@@ -559,6 +589,68 @@ const OrderTab = ({
       })
     );
   }, [overallDiscountPct]);
+
+  //auto rep assignment
+  useEffect(() => {
+    if (!selectedSalesChannel || manualRepOverride) return;
+
+    const raw =
+      selectedSalesChannel?.label || selectedSalesChannel?.value || "";
+    const channelKey = raw.trim().toLowerCase();
+    const wantedRepName = REP_BY_CHANNEL[channelKey];
+    if (!wantedRepName) return;
+
+    const targetRep = findRepByName(wantedRepName);
+    if (!targetRep?.id || !targetRep?.email) return;
+
+    const nextEmail = targetRep.email;
+    if (
+      nextEmail === repEmail ||
+      nextEmail === lastAutoAssignedEmailRef.current
+    ) {
+      return;
+    }
+    lastAutoAssignedEmailRef.current = nextEmail;
+
+    onRepChange?.(nextEmail);
+
+    setSalesTeam((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return [
+          { id: String(targetRep.id), isPrimary: true, contribution: 100 },
+        ];
+      }
+      const primaryIdx = prev.findIndex((m) => m.isPrimary);
+      if (primaryIdx === -1) {
+        return [
+          { id: String(targetRep.id), isPrimary: true, contribution: 100 },
+          ...prev,
+        ];
+      }
+      const next = prev.map((m, i) =>
+        i === primaryIdx ? { ...m, id: String(targetRep.id) } : m
+      );
+
+      const total = next.reduce((s, m) => s + Number(m.contribution || 0), 0);
+      if (total !== 100) {
+        const others = next.reduce(
+          (s, m, i) => s + (i === primaryIdx ? 0 : Number(m.contribution || 0)),
+          0
+        );
+        next[primaryIdx] = {
+          ...next[primaryIdx],
+          contribution: Math.max(0, 100 - others),
+        };
+      }
+      return next;
+    });
+  }, [
+    selectedSalesChannel,
+    manualRepOverride,
+    findRepByName,
+    onRepChange,
+    repEmail,
+  ]);
 
   //  search helpers
   const normalize = (s) =>
@@ -1193,7 +1285,7 @@ const OrderTab = ({
             />
           </Stack>
 
-          {/* 🔽 Sales Team appears right under the checkbox */}
+          {/*  Sales Team appears right under the checkbox */}
           <Collapse in={useMultiSalesTeam} timeout={200} unmountOnExit>
             <Box sx={{ mt: 1.5 }}>
               <Typography
@@ -1230,6 +1322,7 @@ const OrderTab = ({
                       const newTeam = [...salesTeam];
                       newTeam[index].id = e.target.value;
                       setSalesTeam(newTeam);
+                      if (newTeam[index].isPrimary) setManualRepOverride(true);
                     }}
                     size="small"
                     SelectProps={{
