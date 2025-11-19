@@ -174,7 +174,7 @@ function buildBasePayload(
 ) {
   return {
     entity: { id: customerId },
-    custbodyhs_so_id: hubspotSoId,
+    custbody_hpl_hs_so_id: hubspotSoId,
     subsidiary: { id: "2" },
     currency: { id: "1" },
     cseg_nsps_so_class: { id: salesChannelId },
@@ -466,7 +466,7 @@ async function applySalesOrderPatch(
 }
 
 async function createNewSalesOrder(payload, token) {
-  const hubspotSoId = payload?.custbodyhs_so_id;
+  const hubspotSoId = payload?.custbody_hpl_hs_so_id;
   const agent = new https.Agent({ keepAlive: false });
   try {
     await axios.post(`${BASE_URL}/record/v1/salesOrder`, payload, {
@@ -544,7 +544,7 @@ async function findCustomerByHubspotId(hsId: string, token: string) {
 }
 
 async function findSalesOrderByHubspotSoId(soId: string, token: string) {
-  const q = `SELECT id FROM transaction WHERE type = 'SalesOrd' AND custbodyhs_so_id = '${soId}'`;
+  const q = `SELECT id FROM transaction WHERE type = 'SalesOrd' AND custbody_hpl_hs_so_id = '${soId}'`;
   const res = await axios.post(
     `${BASE_URL}/query/v1/suiteql`,
     { q },

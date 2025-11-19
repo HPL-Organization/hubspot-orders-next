@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
           t.tranid
         FROM transaction t
         WHERE t.type = 'SalesOrd'
-          AND t.custbodyhs_so_id = ${valueLit}
+          AND t.custbody_hpl_hs_so_id = ${valueLit}
         ORDER BY t.id DESC
       )
       WHERE ROWNUM = 1
