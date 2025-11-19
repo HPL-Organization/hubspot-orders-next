@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>VP Test</title>
+  </head>
+  <body>
+    <form id="form">
+      <div id="container"></div>
+      <button id="submit" type="button" disabled>Pay</button>
+      <pre id="log"></pre>
+    </form>
+
+    <!-- Load the Versapay SDK from PROD -->
+    <script src="https://ecommerce-api.versapay.com/client.js"></script>
+    <script>
+      (async function () {
+        const sessionId = "2c29e70c-b85b-48ad-af67-048bea8fe937"; // from your /sessions call
+        const log = (m) =>
+          (document.getElementById("log").textContent += m + "\n");
+        try {
+          // Initialize client
+          const client = await versapay.initClient(sessionId); // per docs
+
+          // Initialize iframe
+          const frameReady = client.initFrame(
+            document.querySelector("#container"),
+            "500px", // height
+            "400px" // width (you can compute this responsively)
+          );
+
+          // Enable submit after iframe is ready
+          frameReady.then(
+            () => (document.getElementById("submit").disabled = false)
+          );
+
+          // When iframe approves or rejects
+          client.onApproval(
+            (result) => {
+              log("APPROVED: " + JSON.stringify(result));
+            },
+            (error) => {
+              log("REJECTED: " + JSON.stringify(error));
+            }
+          );
+
+          // Trigger submission inside the iframe on click
+          document.getElementById("submit").addEventListener("click", () => {
+            client.submitEvents();
+          });
+        } catch (e) {
+          log("Init error: " + (e && (e.message || e)));
+        }
+      })();
+    </script>
+  </body>
+</html>

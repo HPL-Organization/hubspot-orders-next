@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     const q = `
       SELECT id, entityid, isperson, companyname, firstname, lastname
       FROM customer
-      WHERE custentityhs_id = '${cid}'
+      WHERE custentity_hpl_hs_id = '${cid}'
       FETCH FIRST 1 ROWS ONLY
     `;
     const { data: qData } = await axios.post(

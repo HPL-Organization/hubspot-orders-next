@@ -527,7 +527,7 @@ function handleNetsuiteError(error: any) {
 }
 
 async function findCustomerByHubspotId(hsId: string, token: string) {
-  const q = `SELECT id FROM customer WHERE custentityhs_id = '${hsId}'`;
+  const q = `SELECT id FROM customer WHERE custentity_hpl_hs_id = '${hsId}'`;
   const res = await axios.post(
     `${BASE_URL}/query/v1/suiteql`,
     { q },

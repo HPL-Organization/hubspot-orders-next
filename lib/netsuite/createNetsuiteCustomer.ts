@@ -319,7 +319,7 @@ export async function createNetsuiteCustomer(customer: any) {
     firstName: customer.firstName,
     middleName: customer.middleName,
     lastName: customer.lastName,
-    custentityhs_id: customer.id,
+    custentity_hpl_hs_id: customer.id,
     addressbook: {
       replaceAll: true,
       items: [
@@ -400,7 +400,7 @@ export async function createNetsuiteCustomer(customer: any) {
 async function findCustomerByHubspotId(hsId: string, accessToken: string) {
   const suiteQL = `
   SELECT id FROM customer
-  WHERE custentityhs_id = '${hsId}'
+  WHERE custentity_hpl_hs_id = '${hsId}'
 `;
 
   const resp = await axios.post(
