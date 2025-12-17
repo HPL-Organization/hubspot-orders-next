@@ -1995,7 +1995,7 @@ const OrderTab = ({
                   });
                   const defaultDecisions = {};
                   enriched.forEach((z) => {
-                    defaultDecisions[z.index] = true;
+                    defaultDecisions[z.index] = false;
                   });
                   setZeroRateLines(enriched);
                   setZeroRateDecisions(defaultDecisions);
@@ -2086,7 +2086,7 @@ const OrderTab = ({
                 <FormControlLabel
                   control={
                     <Checkbox
-                      checked={zeroRateDecisions[z.index] ?? true}
+                      checked={zeroRateDecisions[z.index] ?? false}
                       onChange={(e) =>
                         setZeroRateDecisions((prev) => ({
                           ...prev,
