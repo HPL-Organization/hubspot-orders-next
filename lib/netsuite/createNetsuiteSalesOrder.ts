@@ -452,6 +452,7 @@ async function applySalesOrderPatch(
     const text = String(soReference ?? "").trim();
     body.custbody_hpl_so_reference = text ? text : "";
   }
+  console.log("[PATCH SO] items payload", JSON.stringify(items, null, 2));
   console.log("sending body", body);
 
   const url = `${BASE_URL}/record/v1/salesOrder/${soId}`;

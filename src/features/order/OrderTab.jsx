@@ -21,6 +21,10 @@ import {
   MenuItem,
   Backdrop,
   LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import { Paper, Stack } from "@mui/material";
 import { Collapse, Divider, Typography } from "@mui/material";
@@ -131,7 +135,7 @@ const OrderTab = ({
 
   const { repEmail } = useRep();
   const defaultSalesRepId =
-    repOptions.find((r) => r.email === repEmail)?.id || "-5"; // fallback
+    repOptions.find((r) => r.email === repEmail)?.id || "-5";
 
   const CLOSED_COMPLETE_STAGE = "34773430";
 
@@ -139,10 +143,14 @@ const OrderTab = ({
     () => productCatalog,
     [productCatalog]
   );
-
   // Auto rep assignment for Amazon, ebay, Live event
   const [manualRepOverride, setManualRepOverride] = useState(false);
   const lastAutoAssignedEmailRef = useRef(null);
+
+  const [zeroRateModalOpen, setZeroRateModalOpen] = useState(false);
+  const [zeroRateLines, setZeroRateLines] = useState([]);
+  const [zeroRateDecisions, setZeroRateDecisions] = useState({});
+  const pendingSubmissionRef = useRef(null);
 
   const REP_BY_CHANNEL = {
     amazon: "Amazon",
@@ -841,7 +849,7 @@ const OrderTab = ({
     (row) => {
       const skuKey = (row?.sku ?? "").toString().trim().toUpperCase();
       const bySku = skuKey ? skuToNsId.get(skuKey) : null;
-      if (bySku) return bySku; // avoids stale ns ids
+      if (bySku) return bySku;
 
       const explicit = row?.ns_item_id ?? row?.nsItemId ?? null;
       if (explicit) return String(explicit);
@@ -1114,6 +1122,127 @@ const OrderTab = ({
     }
     return null;
   };
+
+  const handleSalesOrderSuccess = async (data) => {
+    toast.success(" Sales Order submitted to NetSuite.");
+    let gotId = data?.id ? String(data.id) : null;
+    let gotTran = data?.netsuiteTranId
+      ? String(data.netsuiteTranId)
+      : data?.tranid
+      ? String(data.tranid)
+      : null;
+    if (gotId) setNetsuiteInternalId(gotId);
+    if (gotTran) setNetsuiteTranId(gotTran);
+    console.log("Hey hey in order");
+    if (!gotId || !gotTran) {
+      try {
+        console.log("Confirming SO via lookup-salesorder fallback…");
+        const found = await lookupSoByDealId(dealId);
+        if (found) {
+          console.log("found", found);
+          if (!gotId && found.id) {
+            gotId = found.id;
+            setNetsuiteInternalId(gotId);
+          }
+          if (!gotTran && found.tranid) {
+            gotTran = found.tranid;
+            setNetsuiteTranId(gotTran);
+          }
+          if (gotId && gotTran) {
+            console.debug("Confirmed SO from fallback:", {
+              id: gotId,
+              tranid: gotTran,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Fallback lookup failed; will rely on later refresh.", e);
+      }
+    }
+
+    try {
+      await fetch("/api/hubspot/set-deal-stage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealId,
+          stage: CLOSED_COMPLETE_STAGE,
+        }),
+      });
+      onHubspotStageClosedWonComplete?.();
+      toast.success("Deal moved to 'Closed won - Complete' in HubSpot.");
+    } catch (e) {
+      console.error("Failed to update HubSpot dealstage", e);
+    }
+  };
+
+  const handleConfirmZeroRateLines = async () => {
+    const ctx = pendingSubmissionRef.current;
+    if (!ctx) {
+      setZeroRateModalOpen(false);
+      return;
+    }
+    const { lineItems, payloadBase } = ctx;
+
+    const removeIdx = new Set(
+      zeroRateLines
+        .filter((z) => !(zeroRateDecisions[z.index] ?? true))
+        .map((z) => z.index)
+    );
+
+    const cleanedLineItems = lineItems
+      .map((li, idx) => {
+        if (removeIdx.has(idx)) return null;
+        if (zeroRateDecisions[idx] ?? true) {
+          return { ...li, allowZeroRate: true };
+        }
+        return li;
+      })
+      .filter(Boolean);
+
+    try {
+      setCreatingOrder(true);
+      const res = await fetch("/api/netsuite/salesorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payloadBase,
+          lineItems: cleanedLineItems,
+        }),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
+      if (res.status === 409 && data?.status === "needs_confirmation") {
+        toast.error(
+          "Some lines still fail zero-rate checks. Please review them again."
+        );
+        setCreatingOrder(false);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Unknown error");
+      }
+
+      await handleSalesOrderSuccess(data);
+      setZeroRateModalOpen(false);
+      setZeroRateLines([]);
+      setZeroRateDecisions({});
+      pendingSubmissionRef.current = null;
+    } catch (err) {
+      console.error(" Sales Order creation failed (retry):", err);
+      toast.error(" Failed to submit Sales Order.");
+    } finally {
+      setCreatingOrder(false);
+    }
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 text-black">Order</h1>
@@ -1202,7 +1331,7 @@ const OrderTab = ({
                 />
               ))
             }
-            sx={{ width: "100%" }} // was 600; now fluid
+            sx={{ width: "100%" }}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -1327,7 +1456,6 @@ const OrderTab = ({
                     size="small"
                     SelectProps={{
                       MenuProps: {
-                        // keep the menu positioned correctly in this column
                         disablePortal: false,
                         container: () =>
                           typeof window !== "undefined"
@@ -1693,7 +1821,6 @@ const OrderTab = ({
           <Button
             disabled={creatingOrder}
             onClick={async () => {
-              // unchanged
               if (!contactId || !dealId) {
                 toast.error("Missing contact or deal ID.");
                 return;
@@ -1791,6 +1918,8 @@ const OrderTab = ({
                     unitDiscount: Number(row.unitDiscount) || 0,
                     isClosed: row.isClosed === true,
                     comment: row.comment || "",
+                    sku: row.sku || "",
+                    productName: row.productName || "",
                   })
                 );
 
@@ -1808,10 +1937,9 @@ const OrderTab = ({
                       },
                     ];
 
-                const payload = {
+                const payloadBase = {
                   hubspotSoId: dealId,
                   hubspotContactId: contactId,
-                  lineItems,
                   shipComplete,
                   salesTeam: { replaceAll: true, items: formattedSalesTeam },
                   salesChannel: selectedSalesChannel?.id ?? null,
@@ -1826,10 +1954,18 @@ const OrderTab = ({
                   soReference: soReference || "",
                 };
 
+                pendingSubmissionRef.current = {
+                  lineItems,
+                  payloadBase,
+                };
+
                 const res = await fetch("/api/netsuite/salesorder", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
+                  body: JSON.stringify({
+                    ...payloadBase,
+                    lineItems,
+                  }),
                 });
 
                 let data;
@@ -1838,66 +1974,42 @@ const OrderTab = ({
                 } catch {
                   data = null;
                 }
+
+                if (
+                  res.status === 409 &&
+                  data?.status === "needs_confirmation" &&
+                  Array.isArray(data.zeroRateLines)
+                ) {
+                  const ctx = pendingSubmissionRef.current;
+                  const originalLines = ctx?.lineItems || [];
+                  const enriched = data.zeroRateLines.map((z) => {
+                    const idx =
+                      typeof z.index === "number" ? z.index : z.index ?? 0;
+                    const raw = originalLines[idx] || {};
+                    return {
+                      ...z,
+                      index: idx,
+                      sku: raw.sku || "",
+                      productName: raw.productName || "",
+                    };
+                  });
+                  const defaultDecisions = {};
+                  enriched.forEach((z) => {
+                    defaultDecisions[z.index] = true;
+                  });
+                  setZeroRateLines(enriched);
+                  setZeroRateDecisions(defaultDecisions);
+                  setZeroRateModalOpen(true);
+                  setCreatingOrder(false);
+                  toast.info(
+                    "Some lines have quantity > 0 with zero rate. Please confirm them before sending to NetSuite."
+                  );
+                  return;
+                }
+
                 if (!res.ok) throw new Error(data?.error || "Unknown error");
 
-                toast.success(" Sales Order submitted to NetSuite.");
-                let gotId = data?.id ? String(data.id) : null;
-                let gotTran = data?.netsuiteTranId
-                  ? String(data.netsuiteTranId)
-                  : data?.tranid
-                  ? String(data.tranid)
-                  : null;
-                if (gotId) setNetsuiteInternalId(gotId);
-                if (gotTran) setNetsuiteTranId(gotTran);
-                console.log("Hey hey in order");
-                //fallback on custbody_hs_so_id
-                if (!gotId || !gotTran) {
-                  try {
-                    console.log(
-                      "Confirming SO via lookup-salesorder fallback…"
-                    );
-                    const found = await lookupSoByDealId(dealId);
-                    if (found) {
-                      console.log("found", found);
-                      if (!gotId && found.id) {
-                        gotId = found.id;
-                        setNetsuiteInternalId(gotId);
-                      }
-                      if (!gotTran && found.tranid) {
-                        gotTran = found.tranid;
-                        setNetsuiteTranId(gotTran);
-                      }
-                      if (gotId && gotTran) {
-                        console.debug("Confirmed SO from fallback:", {
-                          id: gotId,
-                          tranid: gotTran,
-                        });
-                      }
-                    }
-                  } catch (e) {
-                    console.warn(
-                      "Fallback lookup failed; will rely on later refresh.",
-                      e
-                    );
-                  }
-                }
-
-                try {
-                  await fetch("/api/hubspot/set-deal-stage", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      dealId,
-                      stage: CLOSED_COMPLETE_STAGE,
-                    }),
-                  });
-                  onHubspotStageClosedWonComplete?.();
-                  toast.success(
-                    "Deal moved to 'Closed won - Complete' in HubSpot."
-                  );
-                } catch (e) {
-                  console.error("Failed to update HubSpot dealstage", e);
-                }
+                await handleSalesOrderSuccess(data);
               } catch (err) {
                 console.error(" Sales Order creation failed:", err);
                 toast.error(" Failed to submit Sales Order.");
@@ -1931,6 +2043,81 @@ const OrderTab = ({
           <LinearProgress />
         </Box>
       </Backdrop>
+
+      <Dialog
+        open={zeroRateModalOpen}
+        onClose={() => {
+          if (!creatingOrder) setZeroRateModalOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Review zero-rate lines</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            Some items have quantity greater than zero but a zero rate. Keep the
+            ones that are intentional free lines. Lines you uncheck will be
+            removed from the NetSuite order payload.
+          </Typography>
+          {zeroRateLines.length === 0 ? (
+            <Typography variant="body2">No lines to review.</Typography>
+          ) : (
+            zeroRateLines.map((z) => (
+              <Box
+                key={z.index}
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr auto",
+                  gap: 1,
+                  alignItems: "center",
+                  py: 0.75,
+                  borderBottom: "1px solid rgba(0,0,0,0.06)",
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle2">
+                    {z.sku || "No SKU"} – {z.productName || "Unnamed product"}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Qty: {z.quantity} | Unit price: {z.unitPrice} | Discount:{" "}
+                    {z.unitDiscount}%
+                  </Typography>
+                </Box>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={zeroRateDecisions[z.index] ?? true}
+                      onChange={(e) =>
+                        setZeroRateDecisions((prev) => ({
+                          ...prev,
+                          [z.index]: e.target.checked,
+                        }))
+                      }
+                    />
+                  }
+                  label="Keep as free line"
+                  sx={{ m: 0 }}
+                />
+              </Box>
+            ))
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MuiButton
+            onClick={() => setZeroRateModalOpen(false)}
+            disabled={creatingOrder}
+          >
+            Cancel
+          </MuiButton>
+          <MuiButton
+            variant="contained"
+            onClick={handleConfirmZeroRateLines}
+            disabled={creatingOrder || zeroRateLines.length === 0}
+          >
+            Confirm and Resubmit
+          </MuiButton>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };
